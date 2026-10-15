@@ -36,7 +36,7 @@ enum LocalFieldAI {
         let env = try ORTEnv(loggingLevel: .warning)
         let session = try ORTSession(env: env, modelPath: url.path, sessionOptions: nil)
         let tensor = try input.withUnsafeBufferPointer { buffer -> ORTValue in
-            let data = Data(buffer: buffer)
+            let data = buffer.withMemoryRebound(to: UInt8.self) { Data(buffer: $0) }
             return try ORTValue(tensorData: NSMutableData(data: data), elementType: .float,
                                 shape: [1, 3, 640, 640])
         }
