@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 import PDFKit
-import onnxruntime_objc
+import onnxruntime
 
 struct DetectedField {
     var rect: CGRect
