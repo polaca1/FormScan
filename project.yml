@@ -17,7 +17,7 @@ targets:
     sources: [Sources, Models]
     dependencies:
       - package: ONNXRuntime
-        product: onnxruntime_objc
+        product: onnxruntime
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.polaca1.formscan
