@@ -10,6 +10,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Download open licensed offline model
+        run: |
+          mkdir -p Models
+          curl --fail --location --retry 3 --output Models/model.onnx https://huggingface.co/nutrientdocs/form-field-v1-nano/resolve/main/model.onnx
+          test $(stat -f%z Models/model.onnx) -gt 1000000
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
