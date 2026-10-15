@@ -106,6 +106,7 @@ struct FormScanView: View {
                     Button { scanner = true } label: { Image(systemName: "camera.viewfinder") }
                     Button { importer = true } label: { Image(systemName: "square.and.arrow.down") }
                     if document != nil {
+                        Button("Detectar IA") { detectFields() }
                         Button("Exportar") { exportPDF() }
                     }
                 }
@@ -140,6 +141,34 @@ struct FormScanView: View {
                 if let exported { ShareSheet(items: [exported]) }
             }
         }
+    }
+
+    private func detectFields() {
+        guard let document else { return }
+        var found: [FormEntry] = []
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { continue }
+            let bounds = page.bounds(for: .mediaBox)
+            let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .mediaBox)
+            do {
+                let detected = try LocalFieldAI.detect(image)
+                for item in detected {
+                    let x = item.rect.minX / image.size.width * bounds.width
+                    let y = (1 - item.rect.maxY / image.size.height) * bounds.height
+                    let w = item.rect.width / image.size.width * bounds.width
+                    let h = item.rect.height / image.size.height * bounds.height
+                    found.append(FormEntry(page: index, rect: CGRect(x: x, y: y, width: w, height: h),
+                        label: item.category == 1 ? "Casilla" : item.category == 2 ? "Firma" : "Campo de texto",
+                        checkbox: item.category == 1))
+                }
+            } catch {
+                message = "Error de IA: \(error.localizedDescription)"
+                return
+            }
+        }
+        fields = found
+        mode = 1
+        message = "\(found.count) campos detectados sin conexión"
     }
 
     private func addField(checkbox: Bool) {
