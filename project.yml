@@ -1,0 +1,18 @@
+name: FormScan
+options:
+  bundleIdPrefix: com.polaca1
+settings:
+  base:
+    SWIFT_VERSION: '5.9'
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  FormScan:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.polaca1.formscan
+        INFOPLIST_KEY_NSCameraUsageDescription: "Escanear documentos"
+        TARGETED_DEVICE_FAMILY: '1,2'
