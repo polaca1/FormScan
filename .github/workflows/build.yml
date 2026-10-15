@@ -1,0 +1,25 @@
+name: Build unsigned IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build iPhone application
+        run: xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/FormScan.app Payload/
+          zip -qr FormScan-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FormScan-unsigned-IPA
+          path: FormScan-unsigned.ipa
