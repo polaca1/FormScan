@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   ios:
     runs-on: macos-15
@@ -32,6 +32,9 @@ jobs:
         run: |
           python3 -m pip install onnx==1.23.2 numpy==2.3.5
           python3 Scripts/prepare_models.py
+      - name: Generate adaptive app icons
+        timeout-minutes: 3
+        run: swift Scripts/GenerateIcon.swift
       - name: Start iPhone 14 Pro simulator with iOS 26
         run: |
           xcrun simctl list devices available -j > devices.json
@@ -48,8 +51,6 @@ jobs:
           print(chosen['name'], chosen['udid'])
           with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
           PY
-      - name: Generate adaptive app icons
-        run: swift Scripts/GenerateIcon.swift
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
