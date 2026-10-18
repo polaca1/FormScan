@@ -3,7 +3,7 @@
   "identifier": "com.polaca1.formscan.source",
   "subtitle": "FormScan AI sin conexión",
   "description": "Fuente de FormScan para SideStore.",
-  "iconURL": "https://raw.githubusercontent.com/polaca1/FormScan/main/icon.png",
+  "iconURL": "https://github.com/polaca1.png",
   "apps": [
     {
       "name": "FormScan AI",
@@ -11,7 +11,7 @@
       "developerName": "FormScan",
       "subtitle": "Escanea y rellena formularios sin conexión",
       "localizedDescription": "Escanea documentos, detecta campos con IA local y exporta PDF. La IPA se firma al instalar con SideStore.",
-      "iconURL": "https://raw.githubusercontent.com/polaca1/FormScan/main/icon.png",
+      "iconURL": "https://github.com/polaca1.png",
       "tintColor": "3366CC",
       "version": "1.0.0",
       "versionDate": "2026-10-18",
