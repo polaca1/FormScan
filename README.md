@@ -35,7 +35,7 @@ Las descargas verifican tamaño y SHA-256 y ejecutan una inferencia real antes d
 
 ## Compilar y verificar
 
-Requiere macOS, **Xcode 26.0.1 o posterior** y XcodeGen. La compilación de GitHub Actions selecciona expresamente Xcode 26.0.1 y comprueba el SDK.
+Requiere macOS, **Xcode 26.0.1 o posterior**, XcodeGen y Python 3.12 para preparar los modelos. La compilación de GitHub Actions selecciona expresamente Xcode 26.0.1 y comprueba el SDK.
 
 ```sh
 brew install xcodegen

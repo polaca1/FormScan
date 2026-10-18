@@ -79,6 +79,7 @@ jobs:
           cp Assets.xcassets/AppIcon.appiconset/AppIcon.png release/AppIcon.png
           cp ModelAssets/ffdetr-mobile-int8.onnx release/
           cp Docs/Models.md release/Models.md
+          cp Sources/Resources/ThirdPartyNotices.txt release/
           python3 Scripts/release_source.py "release/FormScan-$VERSION.ipa"
           python3 - <<'PY'
           import json, pathlib, re, shutil
@@ -125,6 +126,8 @@ jobs:
           assert hashlib.sha256((pathlib.Path('release') / filename).read_bytes()).digest() == hashlib.sha256((pathlib.Path('release-check') / filename).read_bytes()).digest()
           print('Published download verified against the SideStore source')
           PY
+          git fetch origin main
+          git switch -C source-update origin/main
           cp release/source.json source.json
           cp release/sidestore-v2.json sidestore-v2.json
           git config user.name 'github-actions[bot]'
