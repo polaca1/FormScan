@@ -150,6 +150,8 @@ final class FormScanUITests: XCTestCase {
         let active = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND label == 'En uso'"), object: use)
         XCTAssertEqual(XCTWaiter.wait(for: [active], timeout: 90), .completed)
         XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertEqual(app.state, .runningForeground, "Installing a model must not open its external model card")
+        XCTAssertTrue(app.navigationBars["Modelos de IA"].isHittable)
         screenshot("17-models-installed")
     }
 }

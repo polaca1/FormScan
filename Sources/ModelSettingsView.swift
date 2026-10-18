@@ -94,7 +94,11 @@ private struct ModelOptionRow: View {
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             Link("Ficha del modelo · Apache 2.0", destination: model.sourceURL).font(.caption)
-        }.padding(.vertical, 8)
+        }
+        // Each control must act independently inside a List row. Automatic style
+        // otherwise also opens the model's external link when installing it.
+        .buttonStyle(.borderless)
+        .padding(.vertical, 8)
     }
     private var header: some View {
         HStack(alignment: .top) {

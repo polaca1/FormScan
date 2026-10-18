@@ -21,8 +21,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.polaca1.formscan
-        MARKETING_VERSION: '2.0.0'
-        CURRENT_PROJECT_VERSION: '20'
+        MARKETING_VERSION: '2.0.1'
+        CURRENT_PROJECT_VERSION: '21'
         INFOPLIST_KEY_CFBundleDisplayName: FormScan
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
