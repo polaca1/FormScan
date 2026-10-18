@@ -110,7 +110,14 @@ final class DocumentSession: ObservableObject {
     }
     func update(_ field: FormEntry) {
         guard let index = item.fields.firstIndex(where: { $0.id == field.id }) else { return }
-        item.fields[index] = field; changed()
+        item.fields[index] = field
+        if let name = field.widgetName {
+            for sibling in item.fields.indices where item.fields[sibling].widgetName == name {
+                item.fields[sibling].text = field.text
+                item.fields[sibling].checked = field.checked
+            }
+        }
+        changed()
     }
     func rename(_ title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)

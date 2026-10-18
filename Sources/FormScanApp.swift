@@ -18,8 +18,12 @@ struct LibraryView: View {
     @State private var importer = false
     @State private var error: String?
     @State private var search = ""
+    @Environment(\.dynamicTypeSize) private var typeSize
     private var documents: [SavedDocument] {
         library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+    private var actionLayout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
     }
 
     var body: some View {
@@ -70,7 +74,7 @@ struct LibraryView: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 GlassEffectContainer(spacing: 16) {
-                    HStack(spacing: 12) {
+                    actionLayout {
                         Button { importer = true } label: {
                             Label("Importar", systemImage: "folder").frame(maxWidth: .infinity, minHeight: 44)
                         }
@@ -123,13 +127,8 @@ struct LibraryView: View {
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 20) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 28).fill(.blue.gradient)
-                    .frame(width: 104, height: 120).rotationEffect(.degrees(-8))
-                Image(systemName: "doc.text.fill").font(.system(size: 66)).foregroundStyle(.white)
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 32))
-                    .symbolRenderingMode(.palette).foregroundStyle(.white, .teal).offset(x: 40, y: 40)
-            }
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 76, weight: .light)).foregroundStyle(.blue)
             .frame(maxWidth: .infinity, minHeight: 158).accessibilityHidden(true)
             Text("Menos papel.\nTodo resuelto.").font(.largeTitle.bold()).tracking(-1)
             Text("Escanea un formulario, completa sus campos y llévatelo listo para compartir.")

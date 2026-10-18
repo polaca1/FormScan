@@ -43,7 +43,7 @@ final class FormScanUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-ui-testing-reopen"]
         app.launch()
-        let saved = app.buttons["Formulario de ejemplo"]
+        let saved = app.staticTexts["Formulario de ejemplo"].firstMatch
         XCTAssertTrue(saved.waitForExistence(timeout: 10)); saved.tap()
         XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.buttons["Formulario"].tap()
         let restored = app.textViews["field-Nombre completo"].exists ? app.textViews["field-Nombre completo"] : app.textFields["field-Nombre completo"]
@@ -62,5 +62,44 @@ final class FormScanUITests: XCTestCase {
         XCTAssertTrue(app.buttons["exportPDF"].waitForExistence(timeout: 5))
         screenshot("07-landscape")
         XCUIDevice.shared.orientation = .portrait
+    }
+    func testImportPickerAndUnavailableCamera() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["scanDocument"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        screenshot("09-camera-unavailable")
+        app.alerts.buttons["Aceptar"].tap()
+        app.buttons["importDocument"].tap()
+        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 8) || app.buttons["Cancelar"].exists)
+        screenshot("10-import-picker")
+    }
+    func testAccessibilityTextLayout() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["scanDocument"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["scanDocument"].isHittable)
+        XCTAssertTrue(app.buttons["importDocument"].isHittable)
+        screenshot("11-large-text")
+    }
+    func testManualFieldPlacement() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-example"]
+        app.launch()
+        XCTAssertTrue(app.buttons["addField"].waitForExistence(timeout: 15))
+        app.buttons["addField"].tap(); app.buttons["Campo de texto"].tap()
+        let content = app.textViews["Contenido"].exists ? app.textViews["Contenido"] : app.textFields["Contenido"]
+        XCTAssertTrue(content.waitForExistence(timeout: 5)); content.tap(); content.typeText("Texto manual")
+        app.buttons["Colocar en el documento"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).tap()
+        let picker = app.segmentedControls["editorMode"]
+        picker.buttons["Formulario"].tap()
+        let value = app.textViews["field-Texto"].exists ? app.textViews["field-Texto"] : app.textFields["field-Texto"]
+        if !value.exists { app.swipeUp() }
+        XCTAssertTrue(value.waitForExistence(timeout: 5))
+        XCTAssertEqual(value.value as? String, "Texto manual")
+        screenshot("12-manual-field")
     }
 }

@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   ios:
     runs-on: macos-15
@@ -37,7 +37,7 @@ jobs:
       - name: Build iPhone application
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
       - name: Choose iOS 26 simulator
         run: |
           xcrun simctl list devices available -j > devices.json
