@@ -1,30 +1,41 @@
 {
-  "name": "FormScan Studio",
+  "name": "FormScan",
   "identifier": "com.polaca1.formscan.source",
-  "subtitle": "Documentos inteligentes. Sin complicaciones.",
-  "description": "Escanea, revisa y completa documentos en tu iPhone. Interfaz nativa, exportación PDF y procesamiento local.",
-  "iconURL": "https://github.com/polaca1.png",
+  "subtitle": "Tus formularios, resueltos.",
+  "description": "Escáner y formularios con IA local. Diseñado para iOS 26.",
+  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/AppIcon.png",
   "apps": [
     {
-      "name": "FormScan AI",
+      "name": "FormScan",
       "bundleIdentifier": "com.polaca1.formscan",
       "developerName": "FormScan",
-      "subtitle": "Escanea. Edita. Exporta.",
-      "localizedDescription": "FormScan convierte documentos en formularios editables. Captura varias páginas con recorte automático, importa PDF o imágenes, identifica campos con procesamiento local, completa tus datos y comparte el resultado en PDF. Sin crear una cuenta.",
-      "iconURL": "https://github.com/polaca1.png",
-      "tintColor": "8250F5",
-      "version": "1.0",
-      "versionDate": "2026-10-19",
-      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/latest/FormScan-unsigned.ipa",
-      "size": 11674502,
-      "minOSVersion": "17.0",
-      "permissions": [
+      "subtitle": "Escanea. Completa. Comparte.",
+      "localizedDescription": "Escanea documentos, importa PDF o imágenes y detecta campos con IA local. Lo que escribes en el formulario aparece inmediatamente en el documento. Guarda, revisa y exporta un PDF listo para compartir.",
+      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/AppIcon.png",
+      "tintColor": "007AFF",
+      "versions": [
         {
-          "type": "camera",
-          "usageDescription": "Escanear documentos"
+          "version": "2.0.0",
+          "buildVersion": "20",
+          "date": "2026-10-18T23:37:36Z",
+          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/FormScan-2.0.0.ipa",
+          "size": 10651258,
+          "minOSVersion": "26.0",
+          "localizedDescription": "Liquid Glass nativo para iOS 26. Nuevo inicio con biblioteca, tutorial con documento de ejemplo, modelos locales descargables y selector recomendado para tu dispositivo. Edición sincronizada con el PDF y nuevo icono minimalista."
         }
       ],
-      "versionDescription": "Nueva interfaz iOS con inicio simplificado, edición de campos y un icono adaptativo claro y oscuro."
+      "version": "2.0.0",
+      "versionDate": "2026-10-18T23:37:36Z",
+      "versionDescription": "Liquid Glass nativo para iOS 26. Nuevo inicio con biblioteca, tutorial con documento de ejemplo, modelos locales descargables y selector recomendado para tu dispositivo. Edición sincronizada con el PDF y nuevo icono minimalista.",
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/FormScan-2.0.0.ipa",
+      "size": 10651258,
+      "minOSVersion": "26.0",
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSCameraUsageDescription": "Escanear documentos"
+        }
+      }
     }
   ]
 }
