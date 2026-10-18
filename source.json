@@ -13,7 +13,7 @@
       "localizedDescription": "Escanea documentos, detecta campos con IA local y exporta PDF. La IPA se firma al instalar con SideStore.",
       "iconURL": "https://github.com/polaca1.png",
       "tintColor": "3366CC",
-      "version": "1.0.0",
+      "version": "1.0",
       "versionDate": "2026-10-18",
       "downloadURL": "https://github.com/polaca1/FormScan/releases/download/latest/FormScan-unsigned.ipa",
       "size": 11674502,
