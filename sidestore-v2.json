@@ -1,0 +1,30 @@
+{
+  "name": "FormScan Studio",
+  "identifier": "com.polaca1.formscan.source.v2",
+  "subtitle": "Documentos inteligentes. Sin complicaciones.",
+  "description": "Escanea, revisa y completa documentos en tu iPhone. Interfaz nativa, exportación PDF y procesamiento local.",
+  "iconURL": "https://github.com/polaca1.png",
+  "apps": [
+    {
+      "name": "FormScan AI",
+      "bundleIdentifier": "com.polaca1.formscan",
+      "developerName": "FormScan",
+      "subtitle": "Escanea. Edita. Exporta.",
+      "localizedDescription": "FormScan convierte documentos en formularios editables. Captura varias páginas con recorte automático, importa PDF o imágenes, identifica campos con procesamiento local, completa tus datos y comparte el resultado en PDF. Sin crear una cuenta.",
+      "iconURL": "https://github.com/polaca1.png",
+      "tintColor": "8250F5",
+      "version": "1.0.1",
+      "versionDate": "2026-10-19",
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/latest/FormScan-unsigned.ipa",
+      "size": 11674502,
+      "minOSVersion": "17.0",
+      "permissions": [
+        {
+          "type": "camera",
+          "usageDescription": "Escanear documentos"
+        }
+      ],
+      "versionDescription": "Nueva interfaz nativa y corrección de instalación en SideStore."
+    }
+  ]
+}
