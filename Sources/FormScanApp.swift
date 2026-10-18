@@ -3,6 +3,12 @@ import PDFKit
 import UniformTypeIdentifiers
 import VisionKit
 
+enum AppRoute: Hashable {
+    case document(UUID)
+    case library
+    case models
+}
+
 @main
 struct FormScanApp: App {
     @StateObject private var library = DocumentLibrary()
@@ -23,7 +29,7 @@ struct FormScanApp: App {
 struct LibraryView: View {
     @ObservedObject var library: DocumentLibrary
     @EnvironmentObject private var models: ModelStore
-    @State private var path: [UUID] = []
+    @State private var path: [AppRoute] = []
     @State private var scanner = false
     @State private var importer = false
     @State private var error: String?
@@ -58,7 +64,7 @@ struct LibraryView: View {
                     .padding(.vertical, 10).listRowBackground(Color.clear).listRowSeparator(.hidden)
                     Section {
                         ForEach(Array(library.documents.prefix(3))) { item in
-                            NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
+                            NavigationLink(value: AppRoute.document(item.id)) { DocumentRow(item: item, library: library) }
                                 .swipeActions {
                                     Button("Eliminar", role: .destructive) { library.delete(item) }
                                 }
@@ -67,19 +73,19 @@ struct LibraryView: View {
                         HStack {
                             Text("Recientes")
                             Spacer()
-                            NavigationLink("Ver todos") { AllDocumentsView(library: library) }
+                            NavigationLink("Ver todos", value: AppRoute.library)
                         }
                     } footer: {
                         Label("Guardado en tu dispositivo", systemImage: "lock.shield")
                     }
                 }
                 Section("Tu espacio") {
-                    NavigationLink { AllDocumentsView(library: library) } label: {
+                    NavigationLink(value: AppRoute.library) {
                         Label {
                             HStack { Text("Todos los documentos"); Spacer(); Text("\(library.documents.count)").foregroundStyle(.secondary) }
                         } icon: { Image(systemName: "folder") }
                     }.accessibilityIdentifier("allDocuments")
-                    NavigationLink { ModelSettingsView(store: models) } label: {
+                    NavigationLink(value: AppRoute.models) {
                         Label {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Modelos de IA")
@@ -95,8 +101,8 @@ struct LibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
-                        NavigationLink { AllDocumentsView(library: library) } label: { Label("Documentos", systemImage: "folder") }
-                        NavigationLink { ModelSettingsView(store: models) } label: { Label("Modelos de IA", systemImage: "cpu") }
+                        Button("Documentos", systemImage: "folder") { path.append(.library) }
+                        Button("Modelos de IA", systemImage: "cpu") { path.append(.models) }
                         Button("Primeros pasos", systemImage: "book.closed") { tutorial = true }
                     } label: { Image(systemName: "line.3.horizontal") }
                     .accessibilityLabel("Menú principal").accessibilityIdentifier("mainMenu")
@@ -125,9 +131,14 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, 20).padding(.vertical, 12)
             }
-            .navigationDestination(for: UUID.self) { id in
-                if let session = library.session(id: id) { EditorView(session: session) }
-                else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .library: AllDocumentsView(library: library)
+                case .models: ModelSettingsView(store: models)
+                case .document(let id):
+                    if let session = library.session(id: id) { EditorView(session: session) }
+                    else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
+                }
             }
         }
         .fullScreenCover(isPresented: $tutorial) {
@@ -193,7 +204,7 @@ struct LibraryView: View {
     }
     private func openExample() { importDocument(ExampleDocument.make(), title: "Formulario de ejemplo") }
     private func importDocument(_ pdf: PDFDocument, title: String) {
-        do { path.append(try library.add(pdf, title: title)) }
+        do { path.append(.document(try library.add(pdf, title: title))) }
         catch { self.error = error.localizedDescription }
     }
 }
@@ -207,7 +218,7 @@ struct AllDocumentsView: View {
     var body: some View {
         List {
             ForEach(documents) { item in
-                NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
+                NavigationLink(value: AppRoute.document(item.id)) { DocumentRow(item: item, library: library) }
                     .swipeActions { Button("Eliminar", role: .destructive) { library.delete(item) } }
             }
         }
