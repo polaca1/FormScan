@@ -25,11 +25,13 @@ jobs:
           test "$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)" -ge 26
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Download open licensed offline model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare and verify offline model catalogue
         run: |
-          mkdir -p Models
-          curl --fail --location --retry 3 --output Models/model.onnx https://huggingface.co/nutrientdocs/form-field-v1-nano/resolve/main/model.onnx
-          test $(stat -f%z Models/model.onnx) -gt 1000000
+          python3 -m pip install onnx==1.23.2 numpy==2.3.5
+          python3 Scripts/prepare_models.py
       - name: Generate adaptive app icons
         run: swift Scripts/GenerateIcon.swift
       - name: Generate project
@@ -71,6 +73,8 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           zip -qr "release/FormScan-$VERSION.ipa" Payload
           cp Assets.xcassets/AppIcon.appiconset/AppIcon.png release/AppIcon.png
+          cp ModelAssets/ffdetr-mobile-int8.onnx release/
+          cp Docs/Models.md release/Models.md
           python3 Scripts/release_source.py "release/FormScan-$VERSION.ipa"
           python3 - <<'PY'
           import json, pathlib, re, shutil

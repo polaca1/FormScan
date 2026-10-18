@@ -6,6 +6,7 @@ private struct SharedPDF: Identifiable { let id = UUID(); let url: URL }
 
 struct EditorView: View {
     @ObservedObject var session: DocumentSession
+    @EnvironmentObject private var models: ModelStore
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var mode = EditorMode.document
@@ -84,7 +85,8 @@ struct EditorView: View {
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Detectar", systemImage: "sparkles") {
                     analysis = Task {
-                        await session.detect()
+                        let model = models.active
+                        await session.detect(model: model, modelURL: models.url(for: model))
                         if !Task.isCancelled { analyzed = true; mode = .form }
                     }
                 }

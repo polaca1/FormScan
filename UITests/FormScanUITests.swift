@@ -106,4 +106,48 @@ final class FormScanUITests: XCTestCase {
         XCTAssertEqual(value.value as? String, "Texto manual")
         screenshot("12-manual-field")
     }
+    func testOnboardingExampleAndDocumentLibrary() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-onboarding"]
+        app.launch()
+        let next = app.buttons["continueTutorial"]
+        XCTAssertTrue(next.waitForExistence(timeout: 12)); screenshot("13-tutorial-welcome")
+        next.tap(); screenshot("14-tutorial-form")
+        next.tap(); screenshot("15-tutorial-local-ai")
+        next.tap()
+        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 12))
+        screenshot("16-tutorial-example")
+        app.navigationBars.buttons.firstMatch.tap()
+        let library = app.buttons["allDocuments"]
+        XCTAssertTrue(library.waitForExistence(timeout: 8))
+        if !library.isHittable { app.swipeUp() }
+        library.tap()
+        XCTAssertTrue(app.navigationBars["Documentos"].waitForExistence(timeout: 8))
+        screenshot("18-document-library")
+        app.staticTexts["Formulario de ejemplo"].firstMatch.tap()
+        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 8))
+    }
+    func testModelMenuDownloadsAndSelectsCompactModel() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        let models = app.buttons["openModels"]
+        XCTAssertTrue(models.waitForExistence(timeout: 8))
+        for _ in 0..<4 { if models.isHittable { break }; app.swipeUp() }
+        models.tap()
+        XCTAssertTrue(app.navigationBars["Modelos de IA"].waitForExistence(timeout: 8))
+        // Previous test runs may already have downloaded the compact model.
+        let install = app.buttons["install-compact"]
+        let use = app.buttons["use-compact"]
+        for _ in 0..<6 {
+            if install.isHittable || use.isHittable { break }
+            app.swipeUp()
+        }
+        if install.exists { install.tap() }
+        else { use.tap() }
+        let active = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND label == 'En uso'"), object: use)
+        XCTAssertEqual(XCTWaiter.wait(for: [active], timeout: 90), .completed)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        screenshot("17-models-installed")
+    }
 }

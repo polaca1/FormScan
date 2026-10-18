@@ -176,7 +176,7 @@ final class DocumentSession: ObservableObject {
         try data.write(to: url, options: .atomic); flush()
         return url
     }
-    func detect() async {
+    func detect(model: AIModel = .nano, modelURL: URL? = nil) async {
         guard !busy else { return }
         busy = true
         defer { busy = false; progress = "" }
@@ -188,7 +188,7 @@ final class DocumentSession: ObservableObject {
                 guard let page = document.page(at: index) else { continue }
                 let bounds = page.bounds(for: .cropBox)
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
-                let detections = try await Task.detached(priority: .userInitiated) { try LocalFieldAI.detect(image) }.value
+                let detections = try await Task.detached(priority: .userInitiated) { try LocalFieldAI.detect(image, model: model, modelURL: modelURL) }.value
                 try Task.checkCancellation()
                 for detection in detections {
                     let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: CGSize(width: image.cgImage!.width, height: image.cgImage!.height), bounds: bounds, rotation: page.rotation)

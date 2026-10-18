@@ -6,6 +6,7 @@ import VisionKit
 @main
 struct FormScanApp: App {
     @StateObject private var library = DocumentLibrary()
+    @StateObject private var models = ModelStore()
     private var testAppearance: ColorScheme? {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ui-testing-dark") { return .dark }
@@ -13,21 +14,23 @@ struct FormScanApp: App {
         return nil
     }
     var body: some Scene {
-        WindowGroup { LibraryView(library: library).tint(.blue).preferredColorScheme(testAppearance) }
+        WindowGroup {
+            LibraryView(library: library).environmentObject(models).tint(.blue).preferredColorScheme(testAppearance)
+        }
     }
 }
 
 struct LibraryView: View {
     @ObservedObject var library: DocumentLibrary
+    @EnvironmentObject private var models: ModelStore
     @State private var path: [UUID] = []
     @State private var scanner = false
     @State private var importer = false
     @State private var error: String?
-    @State private var search = ""
+    @State private var tutorial = false
+    @State private var tutorialChecked = false
+    @AppStorage("onboarding.complete") private var onboarded = false
     @Environment(\.dynamicTypeSize) private var typeSize
-    private var documents: [SavedDocument] {
-        library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
-    }
     private var actionLayout: AnyLayout {
         typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
     }
@@ -40,11 +43,6 @@ struct LibraryView: View {
                         .listRowInsets(EdgeInsets(top: 24, leading: 24, bottom: 24, trailing: 24))
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                     Section {
-                        Label("Escanea varias páginas con recorte automático", systemImage: "viewfinder")
-                        Label("Detecta y completa campos sin conexión", systemImage: "sparkles")
-                        Label("Comparte el documento terminado en PDF", systemImage: "square.and.arrow.up")
-                    } header: { Text("Del papel al documento listo") }
-                    Section {
                         Button { openExample() } label: {
                             Label("Probar un formulario de ejemplo", systemImage: "doc.text")
                         }
@@ -53,27 +51,53 @@ struct LibraryView: View {
                         Label("Tus documentos se guardan solo en este dispositivo.", systemImage: "lock.shield")
                     }
                 } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Todo en su sitio.").font(.title2.bold())
+                        Text("Retoma un documento o empieza uno nuevo.").foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 10).listRowBackground(Color.clear).listRowSeparator(.hidden)
                     Section {
-                        ForEach(documents) { item in
+                        ForEach(Array(library.documents.prefix(3))) { item in
                             NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
                                 .swipeActions {
                                     Button("Eliminar", role: .destructive) { library.delete(item) }
                                 }
                         }
-                    } header: { Text("Recientes") } footer: {
+                    } header: {
+                        HStack {
+                            Text("Recientes")
+                            Spacer()
+                            NavigationLink("Ver todos") { AllDocumentsView(library: library) }
+                        }
+                    } footer: {
                         Label("Guardado en tu dispositivo", systemImage: "lock.shield")
                     }
-                    if documents.isEmpty { ContentUnavailableView.search(text: search) }
+                }
+                Section("Tu espacio") {
+                    NavigationLink { AllDocumentsView(library: library) } label: {
+                        Label {
+                            HStack { Text("Todos los documentos"); Spacer(); Text("\(library.documents.count)").foregroundStyle(.secondary) }
+                        } icon: { Image(systemName: "folder") }
+                    }.accessibilityIdentifier("allDocuments")
+                    NavigationLink { ModelSettingsView(store: models) } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Modelos de IA")
+                                Text(models.active.name).font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "cpu") }
+                    }.accessibilityIdentifier("openModels")
+                    Button { tutorial = true } label: { Label("Guía de primeros pasos", systemImage: "book.closed") }
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("FormScan")
-            .modifier(LibrarySearch(text: $search, enabled: !library.documents.isEmpty))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Importar PDF o imagen", systemImage: "folder") { importer = true }
                         Button("Formulario de ejemplo", systemImage: "doc.text") { openExample() }
+                        Button("Ver tutorial", systemImage: "book.closed") { tutorial = true }
                     } label: { Image(systemName: "plus") }
                     .accessibilityLabel("Nuevo documento")
                 }
@@ -96,6 +120,12 @@ struct LibraryView: View {
             .navigationDestination(for: UUID.self) { id in
                 if let session = library.session(id: id) { EditorView(session: session) }
                 else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
+            }
+        }
+        .fullScreenCover(isPresented: $tutorial) {
+            OnboardingView { example in
+                onboarded = true; tutorial = false
+                if example { openExample() }
             }
         }
         .fullScreenCover(isPresented: $scanner) {
@@ -127,6 +157,11 @@ struct LibraryView: View {
             Button("Aceptar", role: .cancel) { error = nil }
         } message: { Text(error ?? "") }
         .onAppear {
+            if !tutorialChecked {
+                tutorialChecked = true
+                let arguments = ProcessInfo.processInfo.arguments
+                if arguments.contains("-ui-testing-onboarding") || (!arguments.contains("-ui-testing") && !arguments.contains("-ui-testing-reopen") && !onboarded) { tutorial = true }
+            }
             if ProcessInfo.processInfo.arguments.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
         }
     }
@@ -155,13 +190,26 @@ struct LibraryView: View {
     }
 }
 
-private struct LibrarySearch: ViewModifier {
-    @Binding var text: String
-    let enabled: Bool
-    @ViewBuilder func body(content: Content) -> some View {
-        if enabled {
-            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar documentos")
-        } else { content }
+struct AllDocumentsView: View {
+    @ObservedObject var library: DocumentLibrary
+    @State private var search = ""
+    private var documents: [SavedDocument] {
+        library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+    var body: some View {
+        List {
+            ForEach(documents) { item in
+                NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
+                    .swipeActions { Button("Eliminar", role: .destructive) { library.delete(item) } }
+            }
+        }
+        .navigationTitle("Documentos")
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar documentos")
+        .overlay {
+            if library.documents.isEmpty {
+                ContentUnavailableView("Tu biblioteca empieza aquí", systemImage: "folder", description: Text("Escanea o importa un documento desde Inicio. Quedará guardado en este espacio."))
+            } else if documents.isEmpty { ContentUnavailableView.search(text: search) }
+        }
     }
 }
 
