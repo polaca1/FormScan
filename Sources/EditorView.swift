@@ -18,6 +18,7 @@ struct EditorView: View {
     @State private var title = ""
     @State private var analysis: Task<Void, Never>?
     @State private var analyzed = false
+    @FocusState private var focusedField: UUID?
 
     var body: some View {
         Group {
@@ -68,6 +69,11 @@ struct EditorView: View {
             }
         }
         .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Listo") { focusedField = nil }
+                    .accessibilityIdentifier("finishFormEditing")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Compartir", systemImage: "square.and.arrow.up") {
                     do { share = SharedPDF(url: try session.export()) }
@@ -116,6 +122,7 @@ struct EditorView: View {
             Button("Aceptar", role: .cancel) { session.error = nil }
         } message: { Text(session.error ?? "") }
         .onChange(of: scenePhase) { _, phase in if phase != .active { session.flush() } }
+        .onChange(of: mode) { _, _ in focusedField = nil }
         .onDisappear { analysis?.cancel(); session.flush() }
     }
 
@@ -164,6 +171,7 @@ struct EditorView: View {
                                                 TextField("Escribe aquí", text: Binding(get: { field.text }, set: {
                                                     var updated = field; updated.text = $0; session.update(updated)
                                                 }), axis: .vertical)
+                                                .focused($focusedField, equals: field.id)
                                                 .lineLimit(1...8).accessibilityIdentifier("field-\(field.label)")
                                             }
                                         }

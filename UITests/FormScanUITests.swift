@@ -33,7 +33,12 @@ final class FormScanUITests: XCTestCase {
         // A vertical TextField is exposed as a text view on some iOS SDKs.
         let text = name.exists ? name : app.textViews["field-Nombre completo"]
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.tap(); text.typeText("Ana Garcia")
+        let done = app.buttons["finishFormEditing"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
         picker.buttons["Documento"].tap()
+        let documentMode = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 'Documento'"), object: picker)
+        XCTAssertEqual(XCTWaiter.wait(for: [documentMode], timeout: 5), .completed)
+        XCTAssertTrue(app.otherElements["documentPreview"].waitForExistence(timeout: 5))
         screenshot("04-document-filled")
         app.buttons["exportPDF"].tap()
         XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
