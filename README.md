@@ -16,12 +16,22 @@ La IPA de [Releases](https://github.com/polaca1/FormScan/releases) se distribuye
 
 ## Uso
 
+- El primer inicio muestra un tutorial con un formulario de ejemplo. Puedes repetirlo desde **Guía de primeros pasos** o el menú **+**.
+- El inicio reúne documentos recientes, **Todos los documentos** con búsqueda y **Modelos de IA**.
 - **Escanear** abre el escáner nativo a pantalla completa; **Importar** permite elegir PDF o imágenes de Archivos.
 - **Detectar campos** ejecuta el modelo ONNX incluido, sin enviar el documento a un servidor. Los campos PDF existentes se reconocen al importar.
 - **Formulario** permite escribir y marcar casillas. Los cambios aparecen inmediatamente en **Documento** y se guardan automáticamente. Volver a detectar conserva los datos existentes.
 - Toca un campo en el documento o sus ajustes para cambiar etiqueta, contenido y tamaño. **Colocar en el documento** permite situarlo tocando cualquier página.
 - **Compartir** genera una copia PDF con el contenido incorporado, para que se vea en lectores que no admiten formularios interactivos. El original editable permanece en la biblioteca.
 - El menú **+** incluye un formulario de ejemplo para probar el flujo sin cámara.
+
+## Modelos de IA
+
+**Nano equilibrado (FP32)** es la recomendación para uso diario en el iPhone 14 Pro y viene incluido. Puedes instalar **Nano compacto (FP16)** para ahorrar almacenamiento o **FFDetr detallado (INT8)** como alternativa para formularios vacíos. Cada modelo muestra su tamaño, uso y límites. La selección automática mantiene Nano; el selector manual permite cambiarlo.
+
+La app obtiene el modelo y la memoria física del dispositivo y reduce los hilos de análisis en bajo consumo o con temperatura alta. **Medir modelos instalados** compara sus tiempos reales sobre el mismo ejemplo. No se presentan cifras de un ordenador como si fueran de un iPhone. [Investigación, licencias, métricas y adaptación para CPU móvil](Docs/Models.md).
+
+Las descargas verifican tamaño y SHA-256 y ejecutan una inferencia real antes de habilitar el modelo. Puedes eliminarlas sin perder documentos. Solo las descargas requieren internet; el análisis de documentos sigue siendo local.
 
 ## Compilar y verificar
 
@@ -30,7 +40,9 @@ Requiere macOS, **Xcode 26.0.1 o posterior** y XcodeGen. La compilación de GitH
 ```sh
 brew install xcodegen
 mkdir -p Models
-curl --fail --location --output Models/model.onnx https://huggingface.co/nutrientdocs/form-field-v1-nano/resolve/main/model.onnx
+python3 -m venv .build-tools
+.build-tools/bin/pip install onnx==1.23.2 numpy==2.3.5
+.build-tools/bin/python Scripts/prepare_models.py
 swift Scripts/GenerateIcon.swift
 xcodegen generate
 xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build

@@ -45,6 +45,7 @@ enum AIModel: String, CaseIterable, Identifiable, Codable {
     var size: String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 }
 
+@MainActor
 struct DeviceProfile {
     let identifier: String
     let memory: UInt64
@@ -98,6 +99,7 @@ final class ModelStore: ObservableObject {
     let device = DeviceProfile()
     private let directory: URL
     private let defaults: UserDefaults
+    private var downloadOperation: Task<Void, Never>?
 
     init(directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -128,6 +130,14 @@ final class ModelStore: ObservableObject {
     private func persist() {
         defaults.set(selected.rawValue, forKey: "ai.model"); defaults.set(automatic, forKey: "ai.automatic")
     }
+    func beginInstall(_ model: AIModel) {
+        guard downloadOperation == nil else { return }
+        downloadOperation = Task { [weak self] in
+            await self?.install(model)
+            self?.downloadOperation = nil
+        }
+    }
+    func cancelInstall() { downloadOperation?.cancel() }
     func install(_ model: AIModel, from overrideURL: URL? = nil) async {
         guard model != .nano, downloading == nil, !benchmarking else { return }
         downloading = model
@@ -159,7 +169,9 @@ final class ModelStore: ObservableObject {
             installed.insert(model); select(model)
         } catch is CancellationError {
             return
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            if !Task.isCancelled { self.error = error.localizedDescription }
+        }
     }
     func remove(_ model: AIModel) {
         guard model != .nano, downloading == nil, !benchmarking else { return }

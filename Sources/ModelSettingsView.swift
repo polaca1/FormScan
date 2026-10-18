@@ -47,7 +47,7 @@ struct ModelSettingsView: View {
                             HStack {
                                 ProgressView(); Text("Descargando y comprobando…").font(.subheadline)
                                 Spacer()
-                                Button("Cancelar") { operation?.cancel() }.font(.subheadline)
+                                Button("Cancelar") { store.cancelInstall() }.font(.subheadline)
                             }
                         } else if store.installed.contains(model) {
                             HStack {
@@ -64,7 +64,7 @@ struct ModelSettingsView: View {
                             }.buttonStyle(.borderless)
                         } else {
                             Button("Instalar y usar", systemImage: "arrow.down.circle") {
-                                operation = Task { await store.install(model) }
+                                store.beginInstall(model)
                             }
                             .disabled(store.downloading != nil || store.benchmarking)
                             .accessibilityIdentifier("install-\(model.rawValue)")
