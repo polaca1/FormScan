@@ -37,7 +37,7 @@ final class FormScanUITests: XCTestCase {
         screenshot("04-document-filled")
         app.buttons["exportPDF"].tap()
         XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
-        let copy = app.staticTexts["Copy"].exists ? app.staticTexts["Copy"] : app.staticTexts["Copiar"]
+        let copy = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Copy", "Copiar"])).firstMatch
         XCTAssertTrue(copy.waitForExistence(timeout: 8))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: copy)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
