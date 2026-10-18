@@ -72,6 +72,20 @@ jobs:
           zip -qr "release/FormScan-$VERSION.ipa" Payload
           cp Assets.xcassets/AppIcon.appiconset/AppIcon.png release/AppIcon.png
           python3 Scripts/release_source.py "release/FormScan-$VERSION.ipa"
+          python3 - <<'PY'
+          import json, pathlib, re, shutil
+          root = pathlib.Path('Screenshots')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          count = 0
+          for case in manifest:
+              for attachment in case['attachments']:
+                  match = re.match(r'(\d{2}-[a-z-]+)_', attachment['suggestedHumanReadableName'])
+                  if match and attachment['exportedFileName'].endswith('.png'):
+                      shutil.copyfile(root / attachment['exportedFileName'], pathlib.Path('release') / (match[1] + '.png'))
+                      count += 1
+          assert count >= 8, 'Expected UI evidence from the simulator tests'
+          print(f'Packaged {count} UI screenshots for review')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
