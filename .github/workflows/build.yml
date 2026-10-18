@@ -32,6 +32,22 @@ jobs:
         run: |
           python3 -m pip install onnx==1.23.2 numpy==2.3.5
           python3 Scripts/prepare_models.py
+      - name: Start iPhone 14 Pro simulator with iOS 26
+        run: |
+          xcrun simctl list devices available -j > devices.json
+          python3 - <<'PY'
+          import json, os, subprocess
+          devices = json.load(open('devices.json'))['devices']
+          choices = [(runtime, device) for runtime, group in devices.items() if 'iOS-26' in runtime for device in group if device['name'].startswith('iPhone')]
+          choices.sort(key=lambda item: ('iOS-26-0' not in item[0], 'iPhone 17 Pro' not in item[1]['name'], item[1]['name']))
+          assert choices, 'No iOS 26 simulator installed'
+          runtime = choices[0][0]
+          identifier = subprocess.check_output(['xcrun', 'simctl', 'create', 'FormScan iPhone 14 Pro', 'com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro', runtime], text=True).strip()
+          chosen = {'name': 'iPhone 14 Pro', 'udid': identifier}
+          subprocess.run(['xcrun', 'simctl', 'boot', identifier], check=True)
+          print(chosen['name'], chosen['udid'])
+          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
+          PY
       - name: Generate adaptive app icons
         run: swift Scripts/GenerateIcon.swift
       - name: Generate project
@@ -40,19 +56,6 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
-      - name: Choose iOS 26 simulator
-        run: |
-          xcrun simctl list devices available -j > devices.json
-          python3 - <<'PY'
-          import json, os
-          devices = json.load(open('devices.json'))['devices']
-          choices = [(runtime, device) for runtime, group in devices.items() if 'iOS-26' in runtime for device in group if device['name'].startswith('iPhone')]
-          choices.sort(key=lambda item: ('iOS-26-0' not in item[0], 'iPhone 17 Pro' not in item[1]['name'], item[1]['name']))
-          assert choices, 'No iOS 26 simulator installed'
-          chosen = choices[0][1]
-          print(chosen['name'], chosen['udid'])
-          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
-          PY
       - name: Test PDF editing, offline inference and user interface
         run: |
           set -o pipefail
