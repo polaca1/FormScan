@@ -82,12 +82,13 @@ struct EditorView: View {
                 .accessibilityLabel("Opciones del documento")
             }
             ToolbarItemGroup(placement: .bottomBar) {
-                Button("Detectar campos", systemImage: "sparkles") {
+                Button("Detectar", systemImage: "sparkles") {
                     analysis = Task {
                         await session.detect()
                         if !Task.isCancelled { analyzed = true; mode = .form }
                     }
                 }
+                .labelStyle(.titleAndIcon).accessibilityLabel("Detectar campos con IA")
                 .disabled(session.busy).accessibilityIdentifier("detectFields")
                 Spacer()
                 Menu {

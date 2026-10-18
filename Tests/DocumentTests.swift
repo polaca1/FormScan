@@ -65,7 +65,8 @@ final class DocumentTests: XCTestCase {
     }
 
     func testRealOfflineModelDetectsPrintedForm() throws {
-        let page = ExampleDocument.make(widgets: false).page(at: 0)!
+        let source = ExampleDocument.make(widgets: false)
+        let page = source.page(at: 0)!
         let image = page.thumbnail(of: CGSize(width: 1190, height: 1684), for: .cropBox)
         let found = try LocalFieldAI.detect(image)
         XCTAssertGreaterThan(found.count, 0, "Debe ejecutarse el modelo ONNX real, sin red")

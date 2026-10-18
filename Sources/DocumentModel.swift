@@ -226,7 +226,8 @@ enum PDFFormWriter {
             let annotation = PDFAnnotation(bounds: field.rect, forType: .freeText, withProperties: nil)
             annotation.userName = prefix + field.id.uuidString
             annotation.contents = field.checkbox ? "✓" : field.text
-            annotation.font = .systemFont(ofSize: min(field.checkbox ? 22 : 15, max(8, field.rect.height * 0.65)))
+            // PDF standard fonts survive serialization without SF UI font substitution.
+            annotation.font = UIFont(name: "Helvetica", size: min(field.checkbox ? 22 : 15, max(8, field.rect.height * 0.65)))
             annotation.fontColor = .black; annotation.color = .clear
             let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
             page.addAnnotation(annotation)

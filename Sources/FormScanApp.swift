@@ -6,8 +6,14 @@ import VisionKit
 @main
 struct FormScanApp: App {
     @StateObject private var library = DocumentLibrary()
+    private var testAppearance: ColorScheme? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-dark") { return .dark }
+        #endif
+        return nil
+    }
     var body: some Scene {
-        WindowGroup { LibraryView(library: library).tint(.blue) }
+        WindowGroup { LibraryView(library: library).tint(.blue).preferredColorScheme(testAppearance) }
     }
 }
 
@@ -62,7 +68,7 @@ struct LibraryView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("FormScan")
-            .searchable(text: $search, prompt: "Buscar documentos")
+            .modifier(LibrarySearch(text: $search, enabled: !library.documents.isEmpty))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -146,6 +152,16 @@ struct LibraryView: View {
     private func importDocument(_ pdf: PDFDocument, title: String) {
         do { path.append(try library.add(pdf, title: title)) }
         catch { self.error = error.localizedDescription }
+    }
+}
+
+private struct LibrarySearch: ViewModifier {
+    @Binding var text: String
+    let enabled: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar documentos")
+        } else { content }
     }
 }
 

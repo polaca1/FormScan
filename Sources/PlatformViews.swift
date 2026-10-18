@@ -144,7 +144,7 @@ enum ExampleDocument {
             for (name, y) in [("Nombre completo", 212.0), ("Correo electrónico", 310.0), ("Fecha", 408.0)] {
                 let annotation = PDFAnnotation(bounds: CGRect(x: 52, y: 842 - y - 36, width: 491, height: 32), forType: .widget, withProperties: nil)
                 annotation.widgetFieldType = .text; annotation.fieldName = name
-                annotation.font = .systemFont(ofSize: 15); annotation.fontColor = .black; annotation.color = .clear
+                annotation.font = UIFont(name: "Helvetica", size: 15); annotation.fontColor = .black; annotation.color = .clear
                 page.addAnnotation(annotation)
             }
         }

@@ -14,7 +14,7 @@ final class FormScanUITests: XCTestCase {
         XCTAssertGreaterThan(app.buttons["scanDocument"].frame.maxY, app.frame.height * 0.8)
         screenshot("01-home-light")
         app.terminate()
-        app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
+        app.launchArguments += ["-ui-testing-dark"]
         app.launch()
         XCTAssertTrue(app.buttons["scanDocument"].waitForExistence(timeout: 10))
         screenshot("02-home-dark")
@@ -35,6 +35,10 @@ final class FormScanUITests: XCTestCase {
         screenshot("04-document-filled")
         app.buttons["exportPDF"].tap()
         XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
+        let copy = app.buttons["Copy"].exists ? app.buttons["Copy"] : app.buttons["Copiar"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 8))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: copy)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
         screenshot("05-share-pdf")
         app.swipeDown()
         if app.buttons["Close"].exists { app.buttons["Close"].tap() }
@@ -52,7 +56,7 @@ final class FormScanUITests: XCTestCase {
     }
     func testFormAndLandscapeLayout() {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-ui-testing-example", "-AppleInterfaceStyle", "Dark"]
+        app.launchArguments = ["-ui-testing", "-ui-testing-example", "-ui-testing-dark"]
         app.launch()
         let picker = app.segmentedControls["editorMode"]
         XCTAssertTrue(picker.waitForExistence(timeout: 15))
