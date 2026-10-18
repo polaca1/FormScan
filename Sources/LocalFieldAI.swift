@@ -24,7 +24,8 @@ enum LocalFieldAI {
                 space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
             context.interpolationQuality = .high
-            context.draw(cg, in: CGRect(x: 0, y: 640 - rh, width: rw, height: rh))
+            // Match the model's top-left letterbox (padding only at right/bottom).
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: rw, height: rh))
         }
         let plane = 640 * 640
         var input = [Float](repeating: 0, count: plane * 3)
@@ -36,7 +37,7 @@ enum LocalFieldAI {
         let env = try ORTEnv(loggingLevel: .warning)
         let session = try ORTSession(env: env, modelPath: url.path, sessionOptions: nil)
         let tensor = try input.withUnsafeBufferPointer { buffer -> ORTValue in
-            let data = buffer.withMemoryRebound(to: UInt8.self) { Data(buffer: $0) }
+            let data = Data(bytes: buffer.baseAddress!, count: buffer.count * MemoryLayout<Float>.size)
             return try ORTValue(tensorData: NSMutableData(data: data), elementType: .float,
                                 shape: [1, 3, 640, 640])
         }
@@ -55,9 +56,10 @@ enum LocalFieldAI {
                   scores[best] >= threshold else { continue }
             let cx = Double(floats[i]), cy = Double(floats[i+1])
             let w = Double(floats[i+2]), h = Double(floats[i+3])
-            let rect = CGRect(x: max(0, (cx-w/2)/scale),
-                              y: max(0, (cy-h/2)/scale),
+            let rect = CGRect(x: (cx-w/2)/scale, y: (cy-h/2)/scale,
                               width: w/scale, height: h/scale)
+                .intersection(CGRect(x: 0, y: 0, width: width, height: height))
+            guard !rect.isNull, !rect.isEmpty else { continue }
             candidates.append(DetectedField(rect: rect, category: best, confidence: scores[best]))
         }
         candidates.sort { $0.confidence > $1.confidence }

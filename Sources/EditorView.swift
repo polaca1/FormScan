@@ -1,0 +1,231 @@
+import SwiftUI
+import PDFKit
+
+private enum EditorMode: String, CaseIterable { case document = "Documento", form = "Formulario" }
+private struct SharedPDF: Identifiable { let id = UUID(); let url: URL }
+
+struct EditorView: View {
+    @ObservedObject var session: DocumentSession
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var mode = EditorMode.document
+    @State private var page = 0
+    @State private var selection: FormEntry?
+    @State private var placing: UUID?
+    @State private var share: SharedPDF?
+    @State private var renaming = false
+    @State private var title = ""
+    @State private var analysis: Task<Void, Never>?
+    @State private var analyzed = false
+
+    var body: some View {
+        Group {
+            if sizeClass == .regular {
+                HStack(spacing: 0) {
+                    preview
+                    Divider()
+                    form.frame(minWidth: 300, idealWidth: 360, maxWidth: 420)
+                }
+            } else if mode == .document { preview }
+            else { form }
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(session.item.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 10) {
+                if sizeClass != .regular {
+                    Picker("Vista del documento", selection: $mode) {
+                        ForEach(EditorMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented).accessibilityIdentifier("editorMode")
+                }
+                HStack {
+                    Text("Página \(page + 1) de \(session.document.pageCount)")
+                    Spacer()
+                    Label("\(session.item.fields.filter(\.completed).count)/\(session.item.fields.count) completados", systemImage: "checkmark.circle")
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 10)
+            .background(.bar)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if session.busy {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(session.progress).font(.subheadline)
+                    Spacer()
+                    Button("Cancelar") { analysis?.cancel() }
+                }.padding().background(.bar)
+            } else if placing != nil {
+                HStack {
+                    Text("Toca el documento para colocar el campo.").font(.subheadline)
+                    Spacer()
+                    Button("Cancelar") { placing = nil }
+                }.padding().background(.bar)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Compartir", systemImage: "square.and.arrow.up") {
+                    do { share = SharedPDF(url: try session.export()) }
+                    catch { session.error = error.localizedDescription }
+                }
+                .accessibilityIdentifier("exportPDF").disabled(session.busy)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Cambiar nombre", systemImage: "pencil") { title = session.item.title; renaming = true }
+                    Button("Ir a la primera página", systemImage: "doc") { page = 0; mode = .document }
+                } label: { Image(systemName: "ellipsis") }
+                .accessibilityLabel("Opciones del documento")
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button("Detectar campos", systemImage: "sparkles") {
+                    analysis = Task {
+                        await session.detect()
+                        if !Task.isCancelled { analyzed = true; mode = .form }
+                    }
+                }
+                .disabled(session.busy).accessibilityIdentifier("detectFields")
+                Spacer()
+                Menu {
+                    Button("Campo de texto", systemImage: "text.cursor") { add(checkbox: false) }
+                    Button("Casilla", systemImage: "checkmark.square") { add(checkbox: true) }
+                } label: { Label("Añadir", systemImage: "plus") }
+                .disabled(session.busy).accessibilityIdentifier("addField")
+            }
+        }
+        .sheet(item: $selection) { selected in
+            FieldInspector(session: session, id: selected.id) {
+                placing = selected.id; selection = nil; mode = .document
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $share) { ShareSheet(items: [$0.url]) }
+        .alert("Cambiar nombre", isPresented: $renaming) {
+            TextField("Nombre del documento", text: $title)
+            Button("Guardar") { session.rename(title) }
+            Button("Cancelar", role: .cancel) {}
+        }
+        .alert("FormScan", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) {
+            Button("Aceptar", role: .cancel) { session.error = nil }
+        } message: { Text(session.error ?? "") }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { session.flush() } }
+        .onDisappear { analysis?.cancel(); session.flush() }
+    }
+
+    private var preview: some View {
+        PDFCanvas(document: session.document, fields: session.item.fields, revision: session.revision,
+                  page: $page, placing: placing) { field in selection = field } place: { point, index in
+            guard let id = placing, var field = session.item.fields.first(where: { $0.id == id }),
+                  let pdfPage = session.document.page(at: index) else { return }
+            let bounds = pdfPage.bounds(for: .cropBox)
+            field.page = index
+            field.rect.origin = CGPoint(x: min(max(point.x - field.rect.width / 2, bounds.minX), bounds.maxX - field.rect.width),
+                                        y: min(max(point.y - field.rect.height / 2, bounds.minY), bounds.maxY - field.rect.height))
+            session.update(field); placing = nil
+        }
+        .accessibilityIdentifier("documentPreview")
+    }
+    private var form: some View {
+        Group {
+            if session.item.fields.isEmpty {
+                ContentUnavailableView {
+                    Label(analyzed ? "Sin campos detectados" : "Completa tu documento", systemImage: "rectangle.and.text.magnifyingglass")
+                } description: {
+                    Text(analyzed ? "Puede que esta página no sea un formulario. Puedes añadir texto y casillas manualmente." : "Detecta los campos con IA local o añade un campo donde lo necesites.")
+                } actions: {
+                    Button("Añadir un campo") { add(checkbox: false) }.buttonStyle(.bordered)
+                }
+            } else {
+                Form {
+                    Section {
+                        Label("Cada cambio se refleja en el documento.", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    ForEach(0..<session.document.pageCount, id: \.self) { index in
+                        let fields = session.item.fields.filter { $0.page == index }
+                        if !fields.isEmpty {
+                            Section("Página \(index + 1)") {
+                                ForEach(fields) { field in
+                                    HStack(alignment: .center, spacing: 12) {
+                                        if field.checkbox {
+                                            Toggle(field.label, isOn: Binding(get: { field.checked }, set: {
+                                                var updated = field; updated.checked = $0; session.update(updated)
+                                            }))
+                                        } else {
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                Text(field.label).font(.subheadline).foregroundStyle(.secondary)
+                                                TextField("Escribe aquí", text: Binding(get: { field.text }, set: {
+                                                    var updated = field; updated.text = $0; session.update(updated)
+                                                }), axis: .vertical)
+                                                .lineLimit(1...8).accessibilityIdentifier("field-\(field.label)")
+                                            }
+                                        }
+                                        Button { selection = field } label: { Image(systemName: "slider.horizontal.3") }
+                                            .buttonStyle(.borderless).accessibilityLabel("Editar \(field.label)")
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                        }
+                    }
+                }.scrollDismissesKeyboard(.interactively)
+            }
+        }
+    }
+    private func add(checkbox: Bool) {
+        let id = session.addField(checkbox: checkbox, page: page)
+        selection = session.item.fields.first { $0.id == id }
+    }
+}
+
+struct FieldInspector: View {
+    @ObservedObject var session: DocumentSession
+    let id: UUID
+    let place: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    private var field: FormEntry? { session.item.fields.first { $0.id == id } }
+    private func binding<T>(_ keyPath: WritableKeyPath<FormEntry, T>, fallback: T) -> Binding<T> {
+        Binding(get: { field?[keyPath: keyPath] ?? fallback }, set: { value in
+            guard var field else { return }; field[keyPath: keyPath] = value; session.update(field)
+        })
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let field {
+                    Section("Campo") {
+                        TextField("Etiqueta", text: binding(\.label, fallback: ""))
+                        if field.checkbox { Toggle("Marcada", isOn: binding(\.checked, fallback: false)) }
+                        else { TextField("Contenido", text: binding(\.text, fallback: ""), axis: .vertical).lineLimit(1...8) }
+                    }
+                    Section("Posición y tamaño") {
+                        LabeledContent("Página", value: "\(field.page + 1)")
+                        Button("Colocar en el documento", systemImage: "hand.tap") { place() }
+                            .disabled(field.widgetName != nil)
+                        if field.widgetName == nil {
+                            LabeledContent("Ancho", value: "\(Int(field.rect.width)) pt")
+                            Slider(value: Binding(get: { field.rect.width }, set: {
+                                var updated = field; updated.rect.size.width = $0; session.update(updated)
+                            }), in: 16...max(17, session.document.page(at: field.page)!.bounds(for: .cropBox).maxX - field.rect.minX))
+                            .accessibilityLabel("Ancho del campo")
+                            LabeledContent("Alto", value: "\(Int(field.rect.height)) pt")
+                            Slider(value: Binding(get: { field.rect.height }, set: {
+                                var updated = field; updated.rect.size.height = $0; session.update(updated)
+                            }), in: 16...max(17, min(200, session.document.page(at: field.page)!.bounds(for: .cropBox).maxY - field.rect.minY)))
+                            .accessibilityLabel("Alto del campo")
+                        }
+                    }
+                    Section {
+                        Button("Eliminar campo", role: .destructive) { session.remove(id); dismiss() }
+                    }
+                }
+            }
+            .navigationTitle("Editar campo").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Listo") { dismiss() } } }
+        }
+    }
+}
