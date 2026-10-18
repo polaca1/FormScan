@@ -2,9 +2,13 @@ import AppKit
 
 func icon(dark: Bool) -> NSBitmapImageRep {
     let size = 1024
-    let image = NSImage(size: NSSize(width: size, height: size))
-    image.lockFocus()
-    defer { image.unlockFocus() }
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                               isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0,
+                               bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    defer { NSGraphicsContext.restoreGraphicsState() }
     let bounds = NSRect(x: 0, y: 0, width: size, height: size)
     let base = dark ? NSColor(calibratedRed: 0.09, green: 0.08, blue: 0.15, alpha: 1) :
         NSColor(calibratedRed: 0.96, green: 0.95, blue: 1.0, alpha: 1)
@@ -31,7 +35,6 @@ func icon(dark: Bool) -> NSBitmapImageRep {
         line.lineCapStyle = .round
         line.stroke()
     }
-    let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
     return rep
 }
 let root = "Assets.xcassets/AppIcon.appiconset"
