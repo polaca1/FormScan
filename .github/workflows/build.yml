@@ -111,6 +111,17 @@ jobs:
         run: |
           TAG="v$APP_VERSION"
           gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 · Liquid Glass nativo · campos sincronizados con el PDF · IA local. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
+          mkdir release-check
+          gh release download "$TAG" --pattern "FormScan-$APP_VERSION.ipa" --dir release-check
+          python3 Scripts/release_source.py "release-check/FormScan-$APP_VERSION.ipa" --output release-check
+          python3 - <<'PY'
+          import json
+          expected = json.load(open('release/source.json'))['apps'][0]
+          actual = json.load(open('release-check/source.json'))['apps'][0]
+          for key in ('version', 'bundleIdentifier', 'downloadURL', 'size', 'minOSVersion'):
+              assert expected[key] == actual[key], f'Published IPA mismatch: {key}'
+          print('Published download verified against the SideStore source')
+          PY
           cp release/source.json source.json
           cp release/sidestore-v2.json sidestore-v2.json
           git config user.name 'github-actions[bot]'
