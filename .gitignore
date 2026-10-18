@@ -1,0 +1,12 @@
+build/
+DerivedData/
+*.xcodeproj/
+*.xcresult/
+Payload/
+*.ipa
+Models/*.onnx
+ModelAssets/
+Tests/Models/
+.build-tools/
+__pycache__/
+.DS_Store

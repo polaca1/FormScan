@@ -1,392 +1,245 @@
 import SwiftUI
 import PDFKit
-import VisionKit
 import UniformTypeIdentifiers
+import VisionKit
 
 @main
 struct FormScanApp: App {
-    var body: some Scene { WindowGroup { FormScanView() } }
-}
-
-struct FormEntry: Identifiable {
-    let id = UUID()
-    var page: Int
-    var rect: CGRect
-    var label: String
-    var text: String = ""
-    var checked = false
-    var checkbox = false
-}
-
-struct ScanSheet: UIViewControllerRepresentable {
-    let finished: ([UIImage]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
-        let controller = VNDocumentCameraViewController()
-        controller.delegate = context.coordinator
-        return controller
+    @StateObject private var library = DocumentLibrary()
+    @StateObject private var models = ModelStore()
+    private var testAppearance: ColorScheme? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-dark") { return .dark }
+        #endif
+        return nil
     }
-    func updateUIViewController(_ controller: VNDocumentCameraViewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-    final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let parent: ScanSheet
-        init(parent: ScanSheet) { self.parent = parent }
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            parent.finished((0..<scan.pageCount).map { scan.imageOfPage(at: $0) })
-            parent.dismiss()
+    var body: some Scene {
+        WindowGroup {
+            LibraryView(library: library).environmentObject(models).tint(.blue).preferredColorScheme(testAppearance)
         }
-        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) { parent.dismiss() }
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) { parent.dismiss() }
     }
 }
 
-struct PDFPreview: UIViewRepresentable {
-    var document: PDFDocument
-    func makeUIView(context: Context) -> PDFView {
-        let view = PDFView()
-        view.autoScales = true
-        view.backgroundColor = UIColor.secondarySystemGroupedBackground
-        view.displayMode = .singlePageContinuous
-        return view
-    }
-    func updateUIView(_ view: PDFView, context: Context) { view.document = document }
-}
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
-}
-
-private enum Design {
-    static let accent = Color(red: 0.51, green: 0.30, blue: 0.96)
-    static let background = Color(uiColor: .systemGroupedBackground)
-}
-
-struct FormScanView: View {
-    @State private var document: PDFDocument?
-    @State private var fields: [FormEntry] = []
+struct LibraryView: View {
+    @ObservedObject var library: DocumentLibrary
+    @EnvironmentObject private var models: ModelStore
+    @State private var path: [UUID] = []
     @State private var scanner = false
     @State private var importer = false
-    @State private var mode = 0
-    @State private var status = ""
-    @State private var exported: URL?
-    @State private var showingShare = false
-    @State private var busy = false
-    @State private var showError = false
+    @State private var error: String?
+    @State private var tutorial = false
+    @State private var tutorialChecked = false
+    @AppStorage("onboarding.complete") private var onboarded = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var actionLayout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
+    }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let document {
-                    editor(document)
-                } else {
-                    home
-                }
-            }
-            .background(Design.background.ignoresSafeArea())
-            .navigationTitle(document == nil ? "FormScan" : "Documento")
-            .navigationBarTitleDisplayMode(document == nil ? .large : .inline)
-            .tint(Design.accent)
-            .toolbar {
-                if document != nil {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cerrar", systemImage: "chevron.left") {
-                            document = nil
-                            fields = []
-                            status = ""
+        NavigationStack(path: $path) {
+            List {
+                if library.documents.isEmpty {
+                    welcome
+                        .listRowInsets(EdgeInsets(top: 24, leading: 24, bottom: 24, trailing: 24))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    Section {
+                        Button { openExample() } label: {
+                            Label("Probar un formulario de ejemplo", systemImage: "doc.text")
                         }
+                        .accessibilityIdentifier("openExample")
+                    } footer: {
+                        Label("Tus documentos se guardan solo en este dispositivo.", systemImage: "lock.shield")
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("Escanear otro", systemImage: "camera.viewfinder") { scanner = true }
-                            Button("Importar otro", systemImage: "doc.badge.plus") { importer = true }
-                            Button("Añadir texto", systemImage: "text.cursor") { addField(checkbox: false) }
-                            Button("Añadir casilla", systemImage: "checkmark.square") { addField(checkbox: true) }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                    }
-                }
-            }
-            .sheet(isPresented: $scanner) {
-                ScanSheet { images in
-                    let pdf = PDFDocument()
-                    for image in images {
-                        if let page = PDFPage(image: image) { pdf.insert(page, at: pdf.pageCount) }
-                    }
-                    open(pdf)
-                }
-            }
-            .fileImporter(isPresented: $importer, allowedContentTypes: [.pdf, .image]) { result in
-                do {
-                    let url = try result.get()
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    let data = try Data(contentsOf: url)
-                    if let pdf = PDFDocument(data: data) {
-                        open(pdf)
-                    } else if let image = UIImage(data: data), let page = PDFPage(image: image) {
-                        let pdf = PDFDocument()
-                        pdf.insert(page, at: 0)
-                        open(pdf)
-                    } else {
-                        status = "Formato no compatible"
-                        showError = true
-                    }
-                } catch {
-                    status = error.localizedDescription
-                    showError = true
-                }
-            }
-            .sheet(isPresented: $showingShare) {
-                if let exported { ShareSheet(items: [exported]) }
-            }
-            .alert("FormScan", isPresented: $showError) {
-                Button("Aceptar", role: .cancel) {}
-            } message: { Text(status) }
-        }
-    }
-
-    private var home: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 14) {
-                    Image(systemName: "doc.viewfinder")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundStyle(Design.accent)
-                        .frame(width: 72, height: 72)
-                        .background(Design.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 22))
-                    Text("Tus formularios,\nmás sencillos.")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .tracking(-1.1)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Escanea, identifica campos y completa documentos desde tu iPhone.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 20)
-
-                VStack(spacing: 12) {
-                    Button { scanner = true } label: {
-                        Label("Escanear documento", systemImage: "viewfinder")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 17)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Design.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 17))
-
-                    Button { importer = true } label: {
-                        Label("Importar PDF o imagen", systemImage: "square.and.arrow.down")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 17)
-                    }
-                    .buttonStyle(.bordered)
-                    .clipShape(RoundedRectangle(cornerRadius: 17))
-                }
-
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("Cómo funciona")
-                        .font(.title3.bold())
-                    feature("1", "Captura", "Escanea varias páginas con recorte automático.", "camera.viewfinder")
-                    feature("2", "Detecta", "Identifica zonas de formulario mediante IA local.", "sparkles.rectangle.stack")
-                    feature("3", "Completa", "Revisa los campos y comparte un PDF.", "checkmark.doc")
-                }
-                .padding(20)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
-
-                Label("Procesamiento en el dispositivo · Sin cuenta", systemImage: "lock.shield")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(22)
-        }
-    }
-
-    private func feature(_ number: String, _ title: String, _ detail: String, _ symbol: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(Design.accent)
-                .frame(width: 42, height: 42)
-                .background(Design.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(detail).font(.subheadline).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func editor(_ pdf: PDFDocument) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label("\(pdf.pageCount) páginas", systemImage: "doc.on.doc")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(fields.count) campos")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-
-            Picker("Vista", selection: $mode) {
-                Text("Documento").tag(0)
-                Text("Campos").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
-
-            if mode == 0 {
-                PDFPreview(document: pdf)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                    .padding(.horizontal, 12)
-            } else {
-                if fields.isEmpty {
-                    ContentUnavailableView("Sin campos", systemImage: "rectangle.and.text.magnifyingglass",
-                                           description: Text("Detecta campos con IA o añádelos desde el menú."))
-                        .frame(maxHeight: .infinity)
                 } else {
-                    Form {
-                        ForEach($fields) { $field in
-                            Section {
-                                if field.checkbox {
-                                    Toggle(field.label, isOn: $field.checked)
-                                } else {
-                                    TextField(field.label, text: $field.text, axis: .vertical)
-                                        .lineLimit(1...3)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Todo en su sitio.").font(.title2.bold())
+                        Text("Retoma un documento o empieza uno nuevo.").foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 10).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    Section {
+                        ForEach(Array(library.documents.prefix(3))) { item in
+                            NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
+                                .swipeActions {
+                                    Button("Eliminar", role: .destructive) { library.delete(item) }
                                 }
-                            } footer: {
-                                Text("Página \(field.page + 1)")
-                            }
                         }
-                    }
-                    .scrollContentBackground(.hidden)
-                }
-            }
-
-            VStack(spacing: 9) {
-                if !status.isEmpty {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                HStack(spacing: 12) {
-                    Button {
-                        detectFields()
-                    } label: {
+                    } header: {
                         HStack {
-                            if busy { ProgressView().tint(Design.accent) }
-                            else { Image(systemName: "sparkles") }
-                            Text(busy ? "Analizando" : "Detectar IA")
+                            Text("Recientes")
+                            Spacer()
+                            NavigationLink("Ver todos") { AllDocumentsView(library: library) }
                         }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    } footer: {
+                        Label("Guardado en tu dispositivo", systemImage: "lock.shield")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(busy)
-                    Button {
-                        exportPDF()
-                    } label: {
-                        Label("Exportar", systemImage: "square.and.arrow.up")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Design.accent)
-                    .disabled(busy)
+                }
+                Section("Tu espacio") {
+                    NavigationLink { AllDocumentsView(library: library) } label: {
+                        Label {
+                            HStack { Text("Todos los documentos"); Spacer(); Text("\(library.documents.count)").foregroundStyle(.secondary) }
+                        } icon: { Image(systemName: "folder") }
+                    }.accessibilityIdentifier("allDocuments")
+                    NavigationLink { ModelSettingsView(store: models) } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Modelos de IA")
+                                Text(models.active.name).font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "cpu") }
+                    }.accessibilityIdentifier("openModels")
+                    Button { tutorial = true } label: { Label("Guía de primeros pasos", systemImage: "book.closed") }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.regularMaterial)
-        }
-    }
-
-    private func open(_ pdf: PDFDocument) {
-        document = pdf
-        fields = []
-        mode = 0
-        status = "Documento listo para editar"
-    }
-
-    private func detectFields() {
-        guard let document else { return }
-        busy = true
-        status = "Analizando en el dispositivo…"
-        // Keep PDFKit and SwiftUI state mutations on the main actor.
-        DispatchQueue.main.async {
-            var found: [FormEntry] = []
-            for index in 0..<document.pageCount {
-                guard let page = document.page(at: index) else { continue }
-                let bounds = page.bounds(for: .mediaBox)
-                let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .mediaBox)
-                do {
-                    for item in try LocalFieldAI.detect(image) {
-                        let x = item.rect.minX / image.size.width * bounds.width
-                        let y = (1 - item.rect.maxY / image.size.height) * bounds.height
-                        let w = item.rect.width / image.size.width * bounds.width
-                        let h = item.rect.height / image.size.height * bounds.height
-                        found.append(FormEntry(page: index, rect: CGRect(x: x, y: y, width: w, height: h),
-                            label: item.category == 1 ? "Casilla" : item.category == 2 ? "Firma" : "Campo de texto",
-                            checkbox: item.category == 1))
-                    }
-                } catch {
-                    busy = false
-                    status = "No se pudo analizar: \(error.localizedDescription)"
-                    showError = true
-                    return
+            .listStyle(.insetGrouped)
+            .navigationTitle("FormScan")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        NavigationLink { AllDocumentsView(library: library) } label: { Label("Documentos", systemImage: "folder") }
+                        NavigationLink { ModelSettingsView(store: models) } label: { Label("Modelos de IA", systemImage: "cpu") }
+                        Button("Primeros pasos", systemImage: "book.closed") { tutorial = true }
+                    } label: { Image(systemName: "line.3.horizontal") }
+                    .accessibilityLabel("Menú principal").accessibilityIdentifier("mainMenu")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Importar PDF o imagen", systemImage: "folder") { importer = true }
+                        Button("Formulario de ejemplo", systemImage: "doc.text") { openExample() }
+                        Button("Ver tutorial", systemImage: "book.closed") { tutorial = true }
+                    } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Nuevo documento")
                 }
             }
-            fields = found
-            mode = 1
-            status = "\(found.count) campos detectados"
-            busy = false
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                GlassEffectContainer(spacing: 16) {
+                    actionLayout {
+                        Button { importer = true } label: {
+                            Label("Importar", systemImage: "folder").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.glass).accessibilityIdentifier("importDocument")
+                        Button { startScanner() } label: {
+                            Label("Escanear", systemImage: "camera.viewfinder").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.glassProminent).accessibilityIdentifier("scanDocument")
+                    }.font(.headline)
+                }
+                .padding(.horizontal, 20).padding(.vertical, 12)
+            }
+            .navigationDestination(for: UUID.self) { id in
+                if let session = library.session(id: id) { EditorView(session: session) }
+                else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
+            }
         }
-    }
-
-    private func addField(checkbox: Bool) {
-        guard let page = document?.page(at: 0) else { return }
-        let bounds = page.bounds(for: .mediaBox)
-        fields.append(FormEntry(page: 0,
-                                rect: CGRect(x: bounds.midX - 60, y: bounds.midY,
-                                             width: checkbox ? 20 : 160, height: 25),
-                                label: checkbox ? "Casilla" : "Texto", checkbox: checkbox))
-        mode = 1
-    }
-
-    private func exportPDF() {
-        guard let document, let data = document.dataRepresentation(),
-              let copy = PDFDocument(data: data) else { return }
-        for field in fields {
-            guard let page = copy.page(at: field.page) else { continue }
-            let annotation = PDFAnnotation(bounds: field.rect, forType: .freeText, withProperties: nil)
-            annotation.contents = field.checkbox ? (field.checked ? "☑" : "☐") : field.text
-            annotation.font = UIFont.systemFont(ofSize: 13)
-            annotation.fontColor = .black
-            annotation.color = .clear
-            page.addAnnotation(annotation)
+        .fullScreenCover(isPresented: $tutorial) {
+            OnboardingView { example in
+                onboarded = true; tutorial = false
+                if example { openExample() }
+            }
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("FormScan-completado.pdf")
-        if let data = copy.dataRepresentation() {
+        .fullScreenCover(isPresented: $scanner) {
+            ScannerView { result in
+                switch result {
+                case .success(let images):
+                    let pdf = PDFDocument()
+                    images.compactMap { PDFPage(image: $0) }.forEach { pdf.insert($0, at: pdf.pageCount) }
+                    importDocument(pdf, title: "Escaneo")
+                case .failure(let failure): error = failure.localizedDescription
+                }
+            }.ignoresSafeArea()
+        }
+        .fileImporter(isPresented: $importer, allowedContentTypes: [.pdf, .image]) { result in
             do {
-                try data.write(to: url, options: .atomic)
-                exported = url
-                showingShare = true
-            } catch {
-                status = error.localizedDescription
-                showError = true
+                let url = try result.get()
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url)
+                let pdf: PDFDocument
+                if let document = PDFDocument(data: data) { pdf = document }
+                else if let image = UIImage(data: data), let page = PDFPage(image: image) {
+                    pdf = PDFDocument(); pdf.insert(page, at: 0)
+                } else { throw FormScanError.invalidDocument }
+                importDocument(pdf, title: url.deletingPathExtension().lastPathComponent)
+            } catch { self.error = error.localizedDescription }
+        }
+        .alert("No se pudo completar", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("Aceptar", role: .cancel) { error = nil }
+        } message: { Text(error ?? "") }
+        .onAppear {
+            if !tutorialChecked {
+                tutorialChecked = true
+                let arguments = ProcessInfo.processInfo.arguments
+                if arguments.contains("-ui-testing-onboarding") || (!arguments.contains("-ui-testing") && !arguments.contains("-ui-testing-reopen") && !onboarded) { tutorial = true }
             }
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
+        }
+    }
+
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 76, weight: .light)).foregroundStyle(.blue)
+            .frame(maxWidth: .infinity, minHeight: 158).accessibilityHidden(true)
+            Text("Menos papel.\nTodo resuelto.").font(.largeTitle.bold()).tracking(-1)
+            Text("Escanea un formulario, completa sus campos y llévatelo listo para compartir.")
+                .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.padding(.bottom, 8)
+    }
+    private func startScanner() {
+        guard VNDocumentCameraViewController.isSupported else {
+            error = "El escáner necesita una cámara compatible. Puedes importar un PDF o una imagen."
+            return
+        }
+        scanner = true
+    }
+    private func openExample() { importDocument(ExampleDocument.make(), title: "Formulario de ejemplo") }
+    private func importDocument(_ pdf: PDFDocument, title: String) {
+        do { path.append(try library.add(pdf, title: title)) }
+        catch { self.error = error.localizedDescription }
+    }
+}
+
+struct AllDocumentsView: View {
+    @ObservedObject var library: DocumentLibrary
+    @State private var search = ""
+    private var documents: [SavedDocument] {
+        library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+    var body: some View {
+        List {
+            ForEach(documents) { item in
+                NavigationLink(value: item.id) { DocumentRow(item: item, library: library) }
+                    .swipeActions { Button("Eliminar", role: .destructive) { library.delete(item) } }
+            }
+        }
+        .navigationTitle("Documentos")
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar documentos")
+        .overlay {
+            if library.documents.isEmpty {
+                ContentUnavailableView("Tu biblioteca empieza aquí", systemImage: "folder", description: Text("Escanea o importa un documento desde Inicio. Quedará guardado en este espacio."))
+            } else if documents.isEmpty { ContentUnavailableView.search(text: search) }
+        }
+    }
+}
+
+struct DocumentRow: View {
+    let item: SavedDocument
+    let library: DocumentLibrary
+    var body: some View {
+        HStack(spacing: 16) {
+            Group {
+                if let image = library.thumbnail(for: item) { Image(uiImage: image).resizable().scaledToFit() }
+                else { Image(systemName: "doc.text").font(.title).foregroundStyle(.blue) }
+            }
+            .frame(width: 48, height: 64)
+            .background(.white, in: RoundedRectangle(cornerRadius: 5))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(.black.opacity(0.08)))
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.title).font(.headline).lineLimit(2)
+                Text("\(item.pageCount) pág. · \(item.fields.count) campos").font(.subheadline).foregroundStyle(.secondary)
+                Text(item.modified, style: .relative).font(.caption).foregroundStyle(.tertiary)
+            }.padding(.vertical, 6)
         }
     }
 }

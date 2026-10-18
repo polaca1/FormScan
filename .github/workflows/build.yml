@@ -1,44 +1,134 @@
-name: Build unsigned IPA
+name: Build and verify iOS 26
 on:
   push:
-    branches: [main]
+    branches: [main, codex/ios26-rebuild]
+    paths-ignore: [source.json, sidestore-v2.json, README.md]
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   ios:
     runs-on: macos-15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0.1'
+      - name: Verify Xcode and SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          test "$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)" -ge 26
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Download open licensed offline model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare and verify offline model catalogue
         run: |
-          mkdir -p Models
-          curl --fail --location --retry 3 --output Models/model.onnx https://huggingface.co/nutrientdocs/form-field-v1-nano/resolve/main/model.onnx
-          test $(stat -f%z Models/model.onnx) -gt 1000000
+          python3 -m pip install onnx==1.23.2 numpy==2.3.5
+          python3 Scripts/prepare_models.py
       - name: Generate adaptive app icons
+        timeout-minutes: 3
         run: swift Scripts/GenerateIcon.swift
+      - name: Start iPhone 14 Pro simulator with iOS 26
+        run: |
+          xcrun simctl list devices available -j > devices.json
+          python3 - <<'PY'
+          import json, os, subprocess
+          devices = json.load(open('devices.json'))['devices']
+          choices = [(runtime, device) for runtime, group in devices.items() if 'iOS-26' in runtime for device in group if device['name'].startswith('iPhone')]
+          choices.sort(key=lambda item: ('iOS-26-0' not in item[0], 'iPhone 17 Pro' not in item[1]['name'], item[1]['name']))
+          assert choices, 'No iOS 26 simulator installed'
+          runtime = choices[0][0]
+          identifier = subprocess.check_output(['xcrun', 'simctl', 'create', 'FormScan iPhone 14 Pro', 'com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro', runtime], text=True).strip()
+          chosen = {'name': 'iPhone 14 Pro', 'udid': identifier}
+          subprocess.run(['xcrun', 'simctl', 'boot', identifier], check=True)
+          print(chosen['name'], chosen['udid'])
+          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
+          PY
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
-        run: xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-      - name: Package IPA
         run: |
-          mkdir Payload
+          set -o pipefail
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
+      - name: Test PDF editing, offline inference and user interface
+        run: |
+          set -o pipefail
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
+      - name: Export UI screenshots
+        if: always()
+        run: |
+          mkdir -p Screenshots
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path Screenshots || true
+          fi
+      - name: Package and verify IPA and sources
+        run: |
+          mkdir -p Payload release
           cp -R build/Build/Products/Release-iphoneos/FormScan.app Payload/
-          zip -qr FormScan-unsigned.ipa Payload
+          /usr/libexec/PlistBuddy -c 'Print UILaunchScreen' Payload/FormScan.app/Info.plist
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Payload/FormScan.app/Info.plist)
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          zip -qr "release/FormScan-$VERSION.ipa" Payload
+          cp Assets.xcassets/AppIcon.appiconset/AppIcon.png release/AppIcon.png
+          cp ModelAssets/ffdetr-mobile-int8.onnx release/
+          cp Docs/Models.md release/Models.md
+          python3 Scripts/release_source.py "release/FormScan-$VERSION.ipa"
+          python3 - <<'PY'
+          import json, pathlib, re, shutil
+          root = pathlib.Path('Screenshots')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          count = 0
+          for case in manifest:
+              for attachment in case['attachments']:
+                  match = re.match(r'(\d{2}-[a-z-]+)_', attachment['suggestedHumanReadableName'])
+                  if match and attachment['exportedFileName'].endswith('.png'):
+                      shutil.copyfile(root / attachment['exportedFileName'], pathlib.Path('release') / (match[1] + '.png'))
+                      count += 1
+          assert count >= 8, 'Expected UI evidence from the simulator tests'
+          print(f'Packaged {count} UI screenshots for review')
+          PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: FormScan-unsigned-IPA
-          path: FormScan-unsigned.ipa
-
-      - name: Publish latest SideStore IPA release
+          name: FormScan-build-and-verification
+          path: |
+            release/
+            Screenshots/
+            TestResults.xcresult/
+            *-build.log
+            simulator-tests.log
+          retention-days: 14
+      - name: Publish verified release and matching SideStore sources
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view latest >/dev/null 2>&1; then
-            gh release upload latest FormScan-unsigned.ipa --clobber
-          else
-            gh release create latest FormScan-unsigned.ipa --title "FormScan AI - Latest" --notes "Unsigned iOS IPA for SideStore; local ONNX AI included." --latest
-          fi
+          TAG="v$APP_VERSION"
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 · Liquid Glass nativo · campos sincronizados con el PDF · IA local. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
+          mkdir release-check
+          gh release download "$TAG" --pattern "FormScan-$APP_VERSION.ipa" --dir release-check
+          python3 Scripts/release_source.py "release-check/FormScan-$APP_VERSION.ipa" --output release-check
+          python3 - <<'PY'
+          import json, hashlib, pathlib
+          expected = json.load(open('release/source.json'))['apps'][0]
+          actual = json.load(open('release-check/source.json'))['apps'][0]
+          for key in ('version', 'bundleIdentifier', 'downloadURL', 'size', 'minOSVersion'):
+              assert expected[key] == actual[key], f'Published IPA mismatch: {key}'
+          filename = pathlib.Path(expected['downloadURL']).name
+          assert hashlib.sha256((pathlib.Path('release') / filename).read_bytes()).digest() == hashlib.sha256((pathlib.Path('release-check') / filename).read_bytes()).digest()
+          print('Published download verified against the SideStore source')
+          PY
+          cp release/source.json source.json
+          cp release/sidestore-v2.json sidestore-v2.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source.json sidestore-v2.json
+          git commit -m "Synchronize SideStore feeds with verified IPA $APP_VERSION [skip ci]"
+          git push origin HEAD:main
