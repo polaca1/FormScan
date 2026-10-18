@@ -2,6 +2,8 @@ import XCTest
 
 final class FormScanUITests: XCTestCase {
     private func screenshot(_ name: String) {
+        // Allow native glass/sheet presentation animations to finish before capturing evidence.
+        Thread.sleep(forTimeInterval: 0.5)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
@@ -35,7 +37,7 @@ final class FormScanUITests: XCTestCase {
         screenshot("04-document-filled")
         app.buttons["exportPDF"].tap()
         XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
-        let copy = app.buttons["Copy"].exists ? app.buttons["Copy"] : app.buttons["Copiar"]
+        let copy = app.staticTexts["Copy"].exists ? app.staticTexts["Copy"] : app.staticTexts["Copiar"]
         XCTAssertTrue(copy.waitForExistence(timeout: 8))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: copy)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
