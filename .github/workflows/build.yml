@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   ios:
     runs-on: macos-15
@@ -28,3 +30,13 @@ jobs:
         with:
           name: FormScan-unsigned-IPA
           path: FormScan-unsigned.ipa
+
+      - name: Publish latest SideStore IPA release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest FormScan-unsigned.ipa --clobber
+          else
+            gh release create latest FormScan-unsigned.ipa --title "FormScan AI - Latest" --notes "Unsigned iOS IPA for SideStore; local ONNX AI included." --latest
+          fi
