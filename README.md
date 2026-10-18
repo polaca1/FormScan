@@ -1,1 +1,49 @@
 # FormScan
+
+Aplicación nativa para iPhone y iPad con **iOS 26 o posterior**, SwiftUI y Liquid Glass. Escanea documentos, importa PDF e imágenes, identifica campos mediante IA local y exporta el resultado en PDF.
+
+## Instalación con SideStore
+
+Añade esta fuente en SideStore:
+
+```
+https://raw.githubusercontent.com/polaca1/FormScan/main/source.json
+```
+
+También se mantiene `sidestore-v2.json` para instalaciones que ya utilizan esa dirección. Ambas fuentes describen exactamente la misma IPA. Si conservas una fuente antigua en caché con versión `1.0` o `1.0.0`, elimínala de SideStore y añade la dirección anterior de nuevo. Los documentos creados con FormScan 2 se guardan en el dispositivo.
+
+La IPA de [Releases](https://github.com/polaca1/FormScan/releases) se distribuye **sin firmar**: SideStore debe firmarla al instalar. El identificador sigue siendo `com.polaca1.formscan`.
+
+## Uso
+
+- **Escanear** abre el escáner nativo a pantalla completa; **Importar** permite elegir PDF o imágenes de Archivos.
+- **Detectar campos** ejecuta el modelo ONNX incluido, sin enviar el documento a un servidor. Los campos PDF existentes se reconocen al importar.
+- **Formulario** permite escribir y marcar casillas. Los cambios aparecen inmediatamente en **Documento** y se guardan automáticamente. Volver a detectar conserva los datos existentes.
+- Toca un campo en el documento o sus ajustes para cambiar etiqueta, contenido y tamaño. **Colocar en el documento** permite situarlo tocando cualquier página.
+- **Compartir** genera una copia PDF con el contenido incorporado, para que se vea en lectores que no admiten formularios interactivos. El original editable permanece en la biblioteca.
+- El menú **+** incluye un formulario de ejemplo para probar el flujo sin cámara.
+
+## Compilar y verificar
+
+Requiere macOS, **Xcode 26.0.1 o posterior** y XcodeGen. La compilación de GitHub Actions selecciona expresamente Xcode 26.0.1 y comprueba el SDK.
+
+```sh
+brew install xcodegen
+mkdir -p Models
+curl --fail --location --output Models/model.onnx https://huggingface.co/nutrientdocs/form-field-v1-nano/resolve/main/model.onnx
+swift Scripts/GenerateIcon.swift
+xcodegen generate
+xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+```
+
+Abre el proyecto generado en Xcode para ejecutar las pruebas en un simulador iOS 26. El workflow comprueba sincronización y borrado de anotaciones, campos PDF existentes, persistencia al volver a abrir, casillas y documentos con varias páginas, coordenadas y recortes, inferencia ONNX real y conservación de valores al repetir la detección. Las pruebas UI cubren pantalla completa, modos claro/oscuro, formulario, vista de documento, hoja de compartir y orientación horizontal; sus capturas se conservan en el artefacto `FormScan-build-and-verification` junto con el resultado de XCTest.
+
+La cámara requiere un iPhone/iPad físico y no puede validarse mediante el simulador. La firma e instalación de SideStore también requieren el dispositivo.
+
+## Publicación y versiones
+
+Solo después de compilar y superar las pruebas, `main` publica `v<CFBundleShortVersionString>`. `Scripts/release_source.py` lee **Info.plist dentro de la IPA**, calcula su tamaño y genera las dos fuentes de SideStore. La descarga usa una URL de versión inmutable. No edites a mano versiones, tamaños ni URLs en las fuentes: cambia `MARKETING_VERSION` y `CURRENT_PROJECT_VERSION` en `project.yml` para una nueva publicación.
+
+## Recursos
+
+Modelo [nutrientdocs/form-field-v1-nano](https://huggingface.co/nutrientdocs/form-field-v1-nano), licencia Apache 2.0. Inferencia con ONNX Runtime 1.20.0 (MIT). El modelo detecta texto, opciones y firmas; los campos propuestos deben revisarse antes de compartir. Los iconos claro y oscuro originales se conservan en `Artwork/`; el catálogo recibe imágenes opacas de 1024 px. iOS aplica su apariencia tintada del sistema.

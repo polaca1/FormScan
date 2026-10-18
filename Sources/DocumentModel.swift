@@ -126,7 +126,13 @@ final class DocumentSession: ObservableObject {
         item.fields.append(field); changed()
         return field.id
     }
-    func remove(_ id: UUID) { item.fields.removeAll { $0.id == id }; changed() }
+    func remove(_ id: UUID) {
+        if let field = item.fields.first(where: { $0.id == id }), let name = field.widgetName,
+           let page = document.page(at: field.page) {
+            page.annotations.filter { $0.fieldName == name }.forEach { page.removeAnnotation($0) }
+        }
+        item.fields.removeAll { $0.id == id }; changed()
+    }
     func changed() {
         PDFFormWriter.synchronize(item.fields, in: document)
         revision += 1; item.modified = Date()
@@ -176,6 +182,7 @@ final class DocumentSession: ObservableObject {
                 let bounds = page.bounds(for: .cropBox)
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
                 let detections = try await Task.detached(priority: .userInitiated) { try LocalFieldAI.detect(image) }.value
+                try Task.checkCancellation()
                 for detection in detections {
                     let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: CGSize(width: image.cgImage!.width, height: image.cgImage!.height), bounds: bounds, rotation: page.rotation)
                     let exists = (item.fields + found).contains { $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5 }
@@ -186,6 +193,8 @@ final class DocumentSession: ObservableObject {
             }
             found.sort { $0.page == $1.page ? $0.rect.midY > $1.rect.midY : $0.page < $1.page }
             item.fields.append(contentsOf: found); changed()
+        } catch is CancellationError {
+            return
         } catch { self.error = "No se pudo analizar: \(error.localizedDescription)" }
     }
 }
@@ -202,7 +211,7 @@ enum PDFFormWriter {
         for field in fields {
             guard let page = document.page(at: field.page) else { continue }
             if let name = field.widgetName, let widget = page.annotations.first(where: { $0.fieldName == name }) {
-                if field.checkbox { widget.buttonWidgetState = field.checked ? .on : .off }
+                if field.checkbox { widget.buttonWidgetState = field.checked ? .onState : .offState }
                 else { widget.widgetStringValue = field.text }
                 continue
             }
@@ -219,11 +228,11 @@ enum PDFFormWriter {
     static func embeddedFields(in document: PDFDocument) -> [FormEntry] {
         (0..<document.pageCount).flatMap { index -> [FormEntry] in
             guard let page = document.page(at: index) else { return [] }
-            return page.annotations.compactMap { annotation in
+            return page.annotations.compactMap { annotation -> FormEntry? in
                 guard annotation.type == "Widget", let name = annotation.fieldName,
                       annotation.widgetFieldType == .text || annotation.widgetFieldType == .button else { return nil }
                 return FormEntry(page: index, rect: annotation.bounds, label: name,
-                                 text: annotation.widgetStringValue ?? "", checked: annotation.buttonWidgetState == .on,
+                                 text: annotation.widgetStringValue ?? "", checked: annotation.buttonWidgetState == .onState,
                                  checkbox: annotation.widgetFieldType == .button, widgetName: name)
             }
         }

@@ -61,6 +61,12 @@ struct PDFCanvas: UIViewRepresentable {
             view.go(to: target)
         }
         for overlay in context.coordinator.overlays { overlay.fields = fields; overlay.setNeedsDisplay() }
+        if context.coordinator.lastRevision != revision {
+            for index in 0..<document.pageCount {
+                if let page = document.page(at: index) { view.annotationsChanged(on: page) }
+            }
+            context.coordinator.lastRevision = revision
+        }
         view.documentView?.setNeedsDisplay()
         view.setNeedsDisplay()
     }
@@ -71,6 +77,7 @@ struct PDFCanvas: UIViewRepresentable {
         var parent: PDFCanvas
         weak var pdfView: PDFView?
         var overlays: [FieldOverlay] = []
+        var lastRevision = -1
         init(parent: PDFCanvas) { self.parent = parent }
         func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> UIView? {
             let overlay = FieldOverlay()
