@@ -42,7 +42,7 @@ jobs:
           python-version: '3.12'
       - name: Prepare and verify offline model catalogue
         run: |
-          python3 -m pip install onnx==1.23.2 numpy==2.3.5
+          python3 -m pip install onnx==1.23.2 numpy==2.3.5 zstandard==0.25.0
           python3 Scripts/prepare_models.py
       - name: Generate adaptive app icons
         timeout-minutes: 3
@@ -73,30 +73,27 @@ jobs:
         timeout-minutes: 12
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test | tee critical-ui-tests.log
+          python3 -u Scripts/run_tests.py --expected 2 --log critical-ui-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test
       - name: Test PDF editing and three real offline models
         timeout-minutes: 10
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee unit-tests.log
+          python3 -u Scripts/run_tests.py --expected 17 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - name: Test import, automatic analysis and native user interface
         timeout-minutes: 12
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
+          python3 -u Scripts/run_tests.py --expected 9 --log simulator-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - name: Export UI screenshots
         if: always()
         run: |
           mkdir -p Screenshots
-          python3 - <<'PYTHON'
-          import pathlib, subprocess
-          for bundle, folder in [('CriticalUI.xcresult', 'critical'), ('TestResults.xcresult', 'standard')]:
-              if pathlib.Path(bundle).exists():
-                  try:
-                      subprocess.run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', bundle, '--output-path', 'Screenshots/' + folder], timeout=90, check=True)
-                  except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
-                      print('Could not export attachments:', error)
-          PYTHON
+          if [ -d CriticalUI.xcresult ]; then
+            python3 Scripts/export_screenshots.py CriticalUI.xcresult Screenshots/critical
+          fi
+          if [ -d TestResults.xcresult ]; then
+            python3 Scripts/export_screenshots.py TestResults.xcresult Screenshots/standard
+          fi
       - name: Package and verify IPA and sources
         run: |
           mkdir -p release

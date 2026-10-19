@@ -36,6 +36,8 @@ jobs:
           job = next(job for job in jobs if 'xcode-27' in job['name'])
           for name in ['Verify actual Files import and a checked box first', 'Test PDF editing and three real offline models']:
               assert any(step['name'] == name and step['conclusion'] == 'success' for step in job['steps']), name
+          if os.environ['EXPECTED_VERSION'] != '2.2.1':
+              assert next(job for job in jobs if 'macos-26' in job['name'])['conclusion'] == 'success'
           print('Verified source commit, real Files import, checked PDF and offline model tests')
           PY
       - uses: actions/download-artifact@v4
@@ -52,10 +54,12 @@ jobs:
           path: evidence
       - name: Prepare the exact IPA, artwork and evidence
         run: |
+          python3 -m pip install zstandard==0.25.0
           mkdir release
           cp candidate/*.ipa release/
           cp evidence/Assets.xcassets/AppIcon.appiconset/*.png release/
           cp Docs/Models.md Docs/Design.md Docs/iOS27.md Sources/Resources/ThirdPartyNotices.txt release/
+          cp evidence/critical-ui-tests.log evidence/unit-tests.log evidence/simulator-tests.log release/
           python3 - <<'PY'
           import json, os, pathlib, plistlib, shutil, zipfile
           ipa = next(pathlib.Path('release').glob('*.ipa'))
@@ -65,12 +69,27 @@ jobs:
           assert info['CFBundleIdentifier'] == 'com.polaca1.formscan'
           assert info['MinimumOSVersion'] == '26.0'
           assert info['DTSDKName'].startswith('iphoneos27')
-          root = pathlib.Path('evidence/Screenshots/critical')
-          for case in json.loads((root / 'manifest.json').read_text()):
-              for attachment in case['attachments']:
-                  name = attachment['suggestedHumanReadableName'].split('_')[0]
-                  if name[:2].isdigit() and attachment['exportedFileName'].endswith('.png'):
-                      shutil.copyfile(root / attachment['exportedFileName'], pathlib.Path('release') / (name + '.png'))
+          PY
+          if [ "$EXPECTED_VERSION" != '2.2.1' ]; then
+            python3 - <<'PY'
+          import pathlib, re
+          log = pathlib.Path('evidence/simulator-tests.log').read_text()
+          assert "Test Suite 'Selected tests' passed" in log
+          assert re.search(r'Executed 9 tests, with 0 failures', log)
+          assert len(re.findall(r"Test Case .* passed \(", log)) == 9
+          assert not re.search(r': error: -\[FormScanUITests', log)
+          print('All nine remaining UI tests also passed; Xcode stalled after the passing root suite')
+          PY
+            python3 Scripts/export_screenshots.py evidence/TestResults.xcresult evidence/Screenshots/standard --recover
+          fi
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          for manifest in pathlib.Path('evidence/Screenshots').rglob('manifest.json'):
+              for case in json.loads(manifest.read_text()):
+                  for attachment in case['attachments']:
+                      name = attachment['suggestedHumanReadableName'].split('_')[0]
+                      if name[:2].isdigit() and attachment['exportedFileName'].endswith('.png'):
+                          shutil.copyfile(manifest.parent / attachment['exportedFileName'], pathlib.Path('release') / (name + '.png'))
           PY
           python3 Scripts/release_source.py "release/FormScan-$EXPECTED_VERSION.ipa"
       - name: Upload and verify the public download
@@ -83,6 +102,15 @@ jobs:
 
           IPA sin firmar para SideStore. La cámara física requiere un iPhone.
           NOTES
+          if [ "$EXPECTED_VERSION" != '2.2.1' ]; then
+            cat > release-notes.md <<'NOTES'
+          Interfaz nativa para iOS 27 compatible con iOS 26, icono claro y oscuro, análisis automático al importar o escanear, Multi IA local con modelos instalados y recomendaciones según el dispositivo. Casillas con marca vectorial, importación real desde Archivos y formulario sincronizado con el documento.
+
+          Verificación: 28 pruebas en iOS 26 y otras 28 en iOS 27 superadas, incluyendo PDF, tres modelos reales, importación/reapertura, texto grande, modos claro/oscuro, navegación, casillas, edición, exportación y accesibilidad. En iOS 27 xcodebuild se bloqueó al finalizar el informe después de registrar todas las pruebas aprobadas; los registros y capturas se han comprobado y la finalización tiene ahora un límite de espera.
+
+          IPA sin firmar para SideStore. La cámara y la instalación física requieren un iPhone.
+          NOTES
+          fi
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --draft --target "$SOURCE_SHA" --title "FormScan $EXPECTED_VERSION" --notes-file release-notes.md
           fi
