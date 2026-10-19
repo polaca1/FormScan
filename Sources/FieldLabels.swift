@@ -30,14 +30,15 @@ enum FieldLabels {
         if checkbox {
             let candidates = lines.filter { line in
                 let tolerance = max(rect.height, line.rect.height) * 0.8
+                let includesBox = line.rect.minX >= rect.minX - rect.width * 0.5 && line.rect.maxX > rect.maxX + rect.width * 2
                 return abs(line.rect.midY - rect.midY) < tolerance &&
-                    (line.rect.minX >= rect.maxX - 3 || line.rect.maxX <= rect.minX + 3)
+                    (line.rect.minX >= rect.maxX - 3 || line.rect.maxX <= rect.minX + 3 || includesBox)
             }
             // The words directly to the right of a box are its label in most
             // Spanish forms. Also support labels printed to the left.
             let best = candidates.min { score($0.rect, box: rect) < score($1.rect, box: rect) }
             guard let best, score(best.rect, box: rect) < max(rect.width * 14, 180) else { return nil }
-            var text = best.text
+            var text = best.text.trimmingCharacters(in: CharacterSet(charactersIn: " □☐☑✓✔▢◻☒"))
             var bottom = best.rect.maxY
             for line in lines.sorted(by: { $0.rect.minY < $1.rect.minY }) {
                 guard line.rect.minY >= bottom, line.rect.minY - bottom < best.rect.height * 0.9,

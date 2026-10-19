@@ -190,7 +190,9 @@ final class DocumentSession: ObservableObject {
                 let bounds = page.bounds(for: .cropBox)
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
                 let (detections, lines) = try await Task.detached(priority: .userInitiated) {
-                    (try LocalFieldAI.detect(image, model: model, modelURL: modelURL), try FieldLabels.recognize(image))
+                    let detections = try LocalFieldAI.detect(image, model: model, modelURL: modelURL)
+                    // A text-recognition failure must not discard valid fields.
+                    return (detections, (try? FieldLabels.recognize(image)) ?? [])
                 }.value
                 try Task.checkCancellation()
                 for detection in detections {
