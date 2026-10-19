@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var openedDocument: EditorDestination?
     @State private var scanner = false
     @State private var importer = false
+    @State private var pickerClosed = true
     @State private var pickedURL: URL?
     @State private var scannedPages: [UIImage]?
     @State private var importing = false
@@ -42,7 +43,7 @@ struct LibraryView: View {
         TabView(selection: $section) {
             Tab("Inicio", systemImage: "house", value: AppSection.home) {
                 NavigationStack {
-                    StartView(scan: startScanner, importFile: { importer = true }, example: openExample)
+                    StartView(scan: startScanner, importFile: presentImporter, example: openExample)
                         .navigationTitle("Inicio")
                 }
             }
@@ -52,7 +53,7 @@ struct LibraryView: View {
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Menu("Añadir documento", systemImage: "plus") {
-                                    Button("Importar archivo", systemImage: "folder") { importer = true }
+                                    Button("Importar archivo", systemImage: "folder", action: presentImporter)
                                     Button("Escanear", systemImage: "camera.viewfinder", action: startScanner)
                                 }
                             }
@@ -87,7 +88,9 @@ struct LibraryView: View {
                 else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
             }
         }
-        .sheet(isPresented: $importer, onDismiss: importPickedFile) {
+        .sheet(isPresented: $importer, onDismiss: {
+            pickerClosed = true; importPickedFile()
+        }) {
             DocumentPicker { url in pickedURL = url; importer = false }
         }
         .fullScreenCover(isPresented: $scanner, onDismiss: importScannedPages) {
@@ -113,6 +116,10 @@ struct LibraryView: View {
         .alert("No se pudo completar", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("Aceptar", role: .cancel) { error = nil }
         } message: { Text(error ?? "") }
+        .onChange(of: pickedURL) { _, _ in
+            // Providers may deliver their URL before or after the dismissal callback.
+            if pickerClosed { importPickedFile() }
+        }
         .onAppear {
             guard !tutorialChecked else { return }
             tutorialChecked = true
@@ -124,6 +131,10 @@ struct LibraryView: View {
             if args.contains("-ui-testing-import") { prepareImportFixture() }
             #endif
         }
+    }
+    private func presentImporter() {
+        guard !importing else { return }
+        pickerClosed = false; importer = true
     }
     private func startScanner() {
         guard VNDocumentCameraViewController.isSupported else {
@@ -144,6 +155,9 @@ struct LibraryView: View {
     private func importPickedFile() {
         guard let url = pickedURL else { return }
         pickedURL = nil; importing = true
+        #if DEBUG
+        print("FormScan import: reading the selected file after dismissal")
+        #endif
         Task {
             defer { importing = false }
             do {

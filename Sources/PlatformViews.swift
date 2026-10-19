@@ -12,18 +12,18 @@ struct DocumentPicker: UIViewControllerRepresentable {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf, .image], asCopy: true)
         picker.allowsMultipleSelection = false
         picker.delegate = context.coordinator
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-ui-testing-import") {
-            picker.directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        }
-        #endif
         return picker
     }
     func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let finished: (URL?) -> Void
         init(finished: @escaping (URL?) -> Void) { self.finished = finished }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { finished(urls.first) }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            #if DEBUG
+            print("FormScan import: picker returned \(urls.count) file(s)")
+            #endif
+            finished(urls.first)
+        }
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { finished(nil) }
     }
 }

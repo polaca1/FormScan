@@ -61,7 +61,7 @@ struct ModelSettingsView: View {
     }
 
     private var selectionSection: some View {
-        Section("Modelo activo") {
+        Section("Modelo principal") {
             Picker("Selección", selection: selection) {
                 Text("Automática (recomendada)").tag("automatic")
                 ForEach(AIModel.allCases) { model in

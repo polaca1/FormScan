@@ -196,6 +196,8 @@ final class FormScanUITests: XCTestCase {
         XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
         checkbox.tap()
         screenshot("21-checkbox-label")
+        picker.buttons["Documento"].tap()
+        screenshot("25-checkbox-document")
         options.tap()
         XCTAssertTrue(app.buttons["Cambiar nombre"].waitForExistence(timeout: 5))
     }
@@ -205,21 +207,26 @@ final class FormScanUITests: XCTestCase {
         app.launchArguments = ["-ui-testing", "-ui-testing-import"]
         app.launch()
         app.buttons["importDocument"].tap()
-        let file = app.staticTexts["Importar prueba"].firstMatch
-        let fullName = app.staticTexts["Importar prueba.pdf"].firstMatch
-        if !file.waitForExistence(timeout: 5) && !fullName.exists {
-            let browse = app.buttons["Browse"].exists ? app.buttons["Browse"] : app.buttons["Explorar"]
-            if browse.exists { browse.tap() }
-            let location = app.staticTexts["On My iPhone"].exists ? app.staticTexts["On My iPhone"] : app.staticTexts["En mi iPhone"]
-            if location.waitForExistence(timeout: 5) { location.tap() }
-            let folder = app.staticTexts["FormScan"].firstMatch
-            if folder.waitForExistence(timeout: 5) { folder.tap() }
-        }
-        let actualFile = file.exists ? file : fullName
-        XCTAssertTrue(actualFile.waitForExistence(timeout: 10))
+        executionTimeAllowance = 180
+        let browse = app.buttons["Browse"].exists ? app.buttons["Browse"] : app.buttons["Explorar"]
+        if browse.waitForExistence(timeout: 10) { browse.tap() }
+        let location = app.staticTexts["On My iPhone"].exists ? app.staticTexts["On My iPhone"] : app.staticTexts["En mi iPhone"]
+        if location.waitForExistence(timeout: 10) { location.tap() }
+        let folder = app.staticTexts["FormScan"].firstMatch
+        if folder.waitForExistence(timeout: 10) { folder.tap() }
+        let actualFile = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Importar prueba", "Importar prueba.pdf"])).firstMatch
+        guard actualFile.waitForExistence(timeout: 15) else { XCTFail("El archivo no aparece en Archivos"); screenshot("22-import-missing-file"); return }
         screenshot("22-import-actual-file")
-        actualFile.tap()
-        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 15))
+        let cell = app.cells.containing(.staticText, identifier: actualFile.label).firstMatch
+        if cell.exists { cell.tap() }
+        else {
+            // In the icon grid, tap the document thumbnail rather than the
+            // filename label (which has a separate interaction in Files).
+            actualFile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -55)).tap()
+        }
+        guard app.segmentedControls["editorMode"].waitForExistence(timeout: 25) else {
+            screenshot("23-import-not-opened"); XCTFail("El PDF seleccionado no se ha abierto en el editor"); return
+        }
         XCTAssertTrue(app.navigationBars["Importar prueba"].exists)
         screenshot("23-imported-pdf")
         app.terminate()

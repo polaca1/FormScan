@@ -79,9 +79,9 @@ final class DocumentLibrary: ObservableObject {
         return image
     }
     func delete(_ item: SavedDocument) {
+        sessions[item.id]?.invalidate()
         try? FileManager.default.removeItem(at: pdfURL(item.id))
         try? FileManager.default.removeItem(at: metadataURL(item.id))
-        sessions[item.id]?.cancelAnalysis()
         sessions[item.id] = nil; thumbnails[item.id] = nil
         documents.removeAll { $0.id == item.id }
     }
@@ -107,6 +107,12 @@ final class DocumentSession: ObservableObject {
     private let save: (SavedDocument, PDFDocument) throws -> Void
     private var pendingSave: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
+    private var editedDuringAnalysis = Set<UUID>()
+    private var rejectedDuringAnalysis: [FormEntry] = []
+    private var valid = true
+    func invalidate() {
+        valid = false; pendingSave?.cancel(); analysisTask?.cancel()
+    }
     func startAnalysis(using models: ModelStore, automatic: Bool = false) {
         guard !busy, analysisTask == nil, !automatic || item.analyzed != true else { return }
         let jobs = models.analysisJobs, parallelism = models.parallelism
@@ -126,8 +132,10 @@ final class DocumentSession: ObservableObject {
     func update(_ field: FormEntry) {
         guard let index = item.fields.firstIndex(where: { $0.id == field.id }) else { return }
         item.fields[index] = field
+        if busy { editedDuringAnalysis.insert(field.id) }
         if let name = field.widgetName {
             for sibling in item.fields.indices where item.fields[sibling].widgetName == name {
+                if busy { editedDuringAnalysis.insert(item.fields[sibling].id) }
                 item.fields[sibling].text = field.text
                 item.fields[sibling].checked = field.checked
             }
@@ -149,6 +157,7 @@ final class DocumentSession: ObservableObject {
         return field.id
     }
     func remove(_ id: UUID) {
+        if busy, let field = item.fields.first(where: { $0.id == id }) { rejectedDuringAnalysis.append(field) }
         if let field = item.fields.first(where: { $0.id == id }), let name = field.widgetName,
            let page = document.page(at: field.page) {
             page.annotations.filter { $0.fieldName == name }.forEach { page.removeAnnotation($0) }
@@ -156,6 +165,7 @@ final class DocumentSession: ObservableObject {
         item.fields.removeAll { $0.id == id }; changed()
     }
     func changed() {
+        guard valid else { return }
         PDFFormWriter.synchronize(item.fields, in: document)
         revision += 1; item.modified = Date()
         pendingSave?.cancel()
@@ -165,6 +175,7 @@ final class DocumentSession: ObservableObject {
         }
     }
     func flush() {
+        guard valid else { return }
         pendingSave?.cancel()
         do { try save(item, document) } catch { self.error = error.localizedDescription }
     }
@@ -196,9 +207,9 @@ final class DocumentSession: ObservableObject {
         await detect(jobs: [InferenceJob(model: model, url: url)], parallelism: 1)
     }
     func detect(jobs: [InferenceJob], parallelism: Int) async {
-        guard !busy, !jobs.isEmpty else { return }
-        busy = true
-        defer { busy = false; progress = "" }
+        guard valid, !busy, !jobs.isEmpty else { return }
+        busy = true; editedDuringAnalysis.removeAll(); rejectedDuringAnalysis.removeAll()
+        defer { busy = false; progress = ""; editedDuringAnalysis.removeAll(); rejectedDuringAnalysis.removeAll() }
         var failures: [String] = []
         var successful = false
         do {
@@ -226,7 +237,9 @@ final class DocumentSession: ObservableObject {
                         var retained = Set<UUID>()
                         for detection in fused {
                             let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
-                            guard !rect.isEmpty else { continue }
+                            guard !rect.isEmpty, !rejectedDuringAnalysis.contains(where: {
+                                $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
+                            }) else { continue }
                             let checkbox = detection.category == 1
                             let label = FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
                             if let existing = item.fields.firstIndex(where: {
@@ -234,7 +247,7 @@ final class DocumentSession: ObservableObject {
                             }) {
                                 let field = item.fields[existing]
                                 retained.insert(field.id)
-                                if provisional[field.id] == field {
+                                if provisional[field.id] == field, !editedDuringAnalysis.contains(field.id) {
                                     item.fields[existing].rect = rect
                                     item.fields[existing].checkbox = checkbox
                                     if let label { item.fields[existing].label = label }
@@ -250,7 +263,7 @@ final class DocumentSession: ObservableObject {
                             }
                         }
                         item.fields.removeAll { field in
-                            !retained.contains(field.id) && provisional[field.id] == field
+                            !retained.contains(field.id) && provisional[field.id] == field && !editedDuringAnalysis.contains(field.id)
                         }
                         item.fields.sort { $0.page == $1.page ? $0.rect.midY > $1.rect.midY : $0.page < $1.page }
                         changed()
@@ -289,7 +302,7 @@ enum PDFFormWriter {
             if field.checkbox {
                 let outline = PDFAnnotation(bounds: field.rect, forType: .square, withProperties: nil)
                 outline.userName = prefix + field.id.uuidString + ":outline"
-                outline.color = .black; outline.interiorColor = .clear
+                outline.color = .black; outline.interiorColor = nil
                 let edge = PDFBorder(); edge.lineWidth = 0.8; outline.border = edge
                 page.addAnnotation(outline)
                 if field.checked {

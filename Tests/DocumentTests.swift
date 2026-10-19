@@ -168,4 +168,19 @@ final class DocumentTests: XCTestCase {
         XCTAssertLessThan(try inkFraction(try XCTUnwrap(PDFDocument(url: session.export()))), 0.04)
     }
 
+    func testDeletingDocumentCancelsQueuedSaveAndAnalysis() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = DocumentLibrary(directory: directory)
+        let id = try library.add(ExampleDocument.make(), title: "Eliminar")
+        let session = try XCTUnwrap(library.session(id: id))
+        var field = try XCTUnwrap(session.item.fields.first)
+        field.text = "No recrear el archivo"; session.update(field)
+        library.delete(try XCTUnwrap(library.documents.first))
+        session.flush()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertTrue(DocumentLibrary(directory: directory).documents.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(id).pdf").path))
+    }
+
 }

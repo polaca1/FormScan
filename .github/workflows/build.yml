@@ -69,11 +69,16 @@ jobs:
         run: |
           set -o pipefail
           python3 -u Scripts/start_simulator.py | tee simulator-start.log
-      - name: Test PDF editing, offline inference and user interface
+      - name: Test PDF editing and three real offline models
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee unit-tests.log
+      - name: Test import, automatic analysis and native user interface
         timeout-minutes: 12
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
       - name: Export UI screenshots
         if: always()
         run: |
@@ -115,6 +120,8 @@ jobs:
             release/
             Screenshots/
             TestResults.xcresult/
+            UnitTests.xcresult/
+            unit-tests.log
             *-build.log
             simulator-tests.log
             simulator-start.log
