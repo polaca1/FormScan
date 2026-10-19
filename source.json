@@ -3,7 +3,7 @@
   "identifier": "com.polaca1.formscan.source",
   "subtitle": "Tus formularios, resueltos.",
   "description": "Escáner y formularios con IA local. Diseñado para iOS 26.",
-  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/AppIcon.png",
+  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.1/AppIcon.png",
   "apps": [
     {
       "name": "FormScan",
@@ -11,24 +11,24 @@
       "developerName": "FormScan",
       "subtitle": "Escanea. Completa. Comparte.",
       "localizedDescription": "Escanea documentos, importa PDF o imágenes y detecta campos con IA local. Lo que escribes en el formulario aparece inmediatamente en el documento. Guarda, revisa y exporta un PDF listo para compartir.",
-      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/AppIcon.png",
+      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.1/AppIcon.png",
       "tintColor": "007AFF",
       "versions": [
         {
-          "version": "2.0.0",
-          "buildVersion": "20",
-          "date": "2026-10-18T23:37:36Z",
-          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/FormScan-2.0.0.ipa",
-          "size": 10651258,
+          "version": "2.0.1",
+          "buildVersion": "21",
+          "date": "2026-10-19T00:19:28Z",
+          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.1/FormScan-2.0.1.ipa",
+          "size": 13770053,
           "minOSVersion": "26.0",
           "localizedDescription": "Liquid Glass nativo para iOS 26. Nuevo inicio con biblioteca, tutorial con documento de ejemplo, modelos locales descargables y selector recomendado para tu dispositivo. Edición sincronizada con el PDF y nuevo icono minimalista."
         }
       ],
-      "version": "2.0.0",
-      "versionDate": "2026-10-18T23:37:36Z",
+      "version": "2.0.1",
+      "versionDate": "2026-10-19T00:19:28Z",
       "versionDescription": "Liquid Glass nativo para iOS 26. Nuevo inicio con biblioteca, tutorial con documento de ejemplo, modelos locales descargables y selector recomendado para tu dispositivo. Edición sincronizada con el PDF y nuevo icono minimalista.",
-      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.0/FormScan-2.0.0.ipa",
-      "size": 10651258,
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.0.1/FormScan-2.0.1.ipa",
+      "size": 13770053,
       "minOSVersion": "26.0",
       "appPermissions": {
         "entitlements": [],
