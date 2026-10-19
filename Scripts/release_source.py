@@ -22,7 +22,7 @@ def generate(ipa, output):
         "downloadURL": f"{base}/FormScan-{version}.ipa",
         "size": pathlib.Path(ipa).stat().st_size,
         "minOSVersion": info["MinimumOSVersion"],
-        "localizedDescription": "Liquid Glass nativo para iOS 26. Nuevo inicio con biblioteca, tutorial con documento de ejemplo, modelos locales descargables y selector recomendado para tu dispositivo. Edición sincronizada con el PDF y nuevo icono minimalista.",
+        "localizedDescription": "Inicio, Documentos y Ajustes separados según las guías de Apple. Importación con copia local, editor estable al cambiar de modo y etiquetas de casillas tomadas del documento. Liquid Glass nativo, IA local y PDF sincronizado.",
     }
     app = {
         "name": "FormScan", "bundleIdentifier": info["CFBundleIdentifier"],

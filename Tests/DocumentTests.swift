@@ -88,4 +88,48 @@ final class DocumentTests: XCTestCase {
         XCTAssertEqual(session.item.fields.count, count)
         XCTAssertEqual(session.item.fields.first { $0.id == field.id }?.text, "Conservar este valor")
     }
+
+    func testCheckboxUsesPrintedLabelRatherThanWidgetIdentifier() throws {
+        let pdf = ExampleDocument.make()
+        let checkbox = try XCTUnwrap(PDFFormWriter.embeddedFields(in: pdf).first(where: \.checkbox))
+        XCTAssertEqual(checkbox.widgetName, "reviewed")
+        XCTAssertEqual(checkbox.label, "He revisado los datos del formulario.")
+    }
+
+    func testRealOCRFindsCheckboxTextAndNearbyFieldName() throws {
+        let pdf = ExampleDocument.make(widgets: false)
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let image = page.thumbnail(of: CGSize(width: 1190, height: 1684), for: .cropBox)
+        let lines = try FieldLabels.recognize(image)
+        let scale = CGFloat(image.cgImage!.width) / 595
+        let box = CGRect(x: 48 * scale, y: 510 * scale, width: 22 * scale, height: 22 * scale)
+        let label = try XCTUnwrap(FieldLabels.label(for: box, checkbox: true, lines: lines))
+        XCTAssertTrue(label.localizedCaseInsensitiveContains("He revisado"))
+        XCTAssertTrue(label.localizedCaseInsensitiveContains("formulario"))
+        let textBox = CGRect(x: 48 * scale, y: 212 * scale, width: 499 * scale, height: 40 * scale)
+        XCTAssertEqual(FieldLabels.label(for: textBox, checkbox: false, lines: lines), "Nombre completo")
+    }
+
+    func testImportPDFAndImageSurviveRemovingOriginalFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("Desde Archivos.pdf")
+        try ExampleDocument.make().dataRepresentation()!.write(to: url)
+        let data = try DocumentImport.read(url)
+        try FileManager.default.removeItem(at: url)
+        let directory = root.appendingPathComponent("library")
+        let library = DocumentLibrary(directory: directory)
+        let id = try library.add(DocumentImport.decode(data), title: "Desde Archivos")
+        XCTAssertEqual(DocumentLibrary(directory: directory).session(id: id)?.item.fields.count, 4)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 400))
+        let image = renderer.image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 300, height: 400))
+            ("Imagen importada" as NSString).draw(at: CGPoint(x: 20, y: 40), withAttributes: [.font: UIFont.systemFont(ofSize: 18)])
+        }
+        let imagePDF = try DocumentImport.decode(try XCTUnwrap(image.pngData()))
+        let imageID = try library.add(imagePDF, title: "Imagen")
+        XCTAssertEqual(DocumentLibrary(directory: directory).session(id: imageID)?.document.pageCount, 1)
+        XCTAssertThrowsError(try DocumentImport.decode(Data("incompatible".utf8)))
+    }
 }

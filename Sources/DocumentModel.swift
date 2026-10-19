@@ -189,13 +189,17 @@ final class DocumentSession: ObservableObject {
                 guard let page = document.page(at: index) else { continue }
                 let bounds = page.bounds(for: .cropBox)
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
-                let detections = try await Task.detached(priority: .userInitiated) { try LocalFieldAI.detect(image, model: model, modelURL: modelURL) }.value
+                let (detections, lines) = try await Task.detached(priority: .userInitiated) {
+                    (try LocalFieldAI.detect(image, model: model, modelURL: modelURL), try FieldLabels.recognize(image))
+                }.value
                 try Task.checkCancellation()
                 for detection in detections {
                     let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: CGSize(width: image.cgImage!.width, height: image.cgImage!.height), bounds: bounds, rotation: page.rotation)
                     let exists = (item.fields + found).contains { $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5 }
                     if !exists, !rect.isEmpty {
-                        found.append(FormEntry(page: index, rect: rect, label: detection.category == 1 ? "Casilla" : detection.category == 2 ? "Firma" : "Campo de texto", checkbox: detection.category == 1))
+                        let label = FieldLabels.label(for: detection.rect, checkbox: detection.category == 1, lines: lines)
+                        let fallback = detection.category == 1 ? "Opción sin etiqueta" : detection.category == 2 ? "Firma" : "Campo de texto"
+                        found.append(FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: detection.category == 1))
                     }
                 }
             }
@@ -240,9 +244,14 @@ enum PDFFormWriter {
             return page.annotations.compactMap { annotation -> FormEntry? in
                 guard annotation.type == "Widget", let name = annotation.fieldName,
                       annotation.widgetFieldType == .text || annotation.widgetFieldType == .button else { return nil }
-                return FormEntry(page: index, rect: annotation.bounds, label: name,
+                let checkbox = annotation.widgetFieldType == .button
+                let region = CGRect(x: annotation.bounds.maxX + 2, y: annotation.bounds.minY - annotation.bounds.height * 0.25,
+                                    width: max(0, page.bounds(for: .cropBox).maxX - annotation.bounds.maxX - 8), height: annotation.bounds.height * 1.5)
+                let printed = checkbox ? page.selection(for: region)?.string?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+                let label = printed.flatMap { $0.isEmpty ? nil : $0 } ?? name
+                return FormEntry(page: index, rect: annotation.bounds, label: label,
                                  text: annotation.widgetStringValue ?? "", checked: annotation.buttonWidgetState == .onState,
-                                 checkbox: annotation.widgetFieldType == .button, widgetName: name)
+                                 checkbox: checkbox, widgetName: name)
             }
         }
     }

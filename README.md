@@ -16,14 +16,18 @@ La IPA de [Releases](https://github.com/polaca1/FormScan/releases) se distribuye
 
 ## Uso
 
-- El primer inicio muestra un tutorial con un formulario de ejemplo. Puedes repetirlo desde **Guía de primeros pasos** o el menú **+**.
-- El inicio reúne documentos recientes, **Todos los documentos** con búsqueda y **Modelos de IA**.
+- El primer inicio muestra un tutorial con un formulario de ejemplo. Puedes repetirlo desde **Ajustes → Primeros pasos**.
+- La app tiene tres pestañas: **Inicio** para escanear/importar, **Documentos** con biblioteca y búsqueda, y **Ajustes** con modelos y tutorial. El editor es una tarea modal a pantalla completa y vuelve a Documentos al cerrarse.
 - **Escanear** abre el escáner nativo a pantalla completa; **Importar** permite elegir PDF o imágenes de Archivos.
 - **Detectar campos** ejecuta el modelo ONNX incluido, sin enviar el documento a un servidor. Los campos PDF existentes se reconocen al importar.
 - **Formulario** permite escribir y marcar casillas. Los cambios aparecen inmediatamente en **Documento** y se guardan automáticamente. Volver a detectar conserva los datos existentes.
 - Toca un campo en el documento o sus ajustes para cambiar etiqueta, contenido y tamaño. **Colocar en el documento** permite situarlo tocando cualquier página.
 - **Compartir** genera una copia PDF con el contenido incorporado, para que se vea en lectores que no admiten formularios interactivos. El original editable permanece en la biblioteca.
-- El menú **+** incluye un formulario de ejemplo para probar el flujo sin cámara.
+- **Probar un ejemplo**, en Inicio, permite probar el flujo sin cámara.
+
+## Diseño
+
+Se aplica la guía oficial de Apple: navegación con pestañas nativas, contenido separado de los controles, barras con acciones limitadas y transiciones breves que respetan Reducir movimiento. [Pautas concretas aplicadas y fuentes oficiales](Docs/Design.md). Las vistas PDF y Formulario se mantienen vivas al alternar para conservar zoom, posición y geometría de la barra.
 
 ## Modelos de IA
 

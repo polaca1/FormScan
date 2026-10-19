@@ -1,6 +1,56 @@
 import SwiftUI
 import PDFKit
 import VisionKit
+import UniformTypeIdentifiers
+
+struct DocumentPicker: UIViewControllerRepresentable {
+    let finished: (URL?) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(finished: finished) }
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        // Copy mode lets file providers finish downloading before handing us a
+        // local file. Opening the editor waits for the picker sheet to dismiss.
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf, .image], asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-import") {
+            picker.directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        }
+        #endif
+        return picker
+    }
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let finished: (URL?) -> Void
+        init(finished: @escaping (URL?) -> Void) { self.finished = finished }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { finished(urls.first) }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { finished(nil) }
+    }
+}
+
+enum DocumentImport {
+    static func read(_ url: URL) throws -> Data {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        var coordinationError: NSError?
+        var result: Result<Data, Error> = .failure(FormScanError.invalidDocument)
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinationError) { location in
+            result = Result { try Data(contentsOf: location) }
+        }
+        if let coordinationError { throw coordinationError }
+        return try result.get()
+    }
+    static func decode(_ data: Data) throws -> PDFDocument {
+        let pdf: PDFDocument
+        if let document = PDFDocument(data: data) { pdf = document }
+        else if let image = UIImage(data: data), let page = PDFPage(image: image) {
+            pdf = PDFDocument(); pdf.insert(page, at: 0)
+        } else { throw FormScanError.invalidDocument }
+        guard !pdf.isLocked else { throw FormScanError.locked }
+        guard pdf.pageCount > 0 else { throw FormScanError.invalidDocument }
+        return pdf
+    }
+}
 
 struct ScannerView: UIViewControllerRepresentable {
     let finished: (Result<[UIImage], Error>) -> Void
@@ -147,6 +197,11 @@ enum ExampleDocument {
                 annotation.font = UIFont(name: "Helvetica", size: 15); annotation.fontColor = .black; annotation.color = .clear
                 page.addAnnotation(annotation)
             }
+            let checkbox = PDFAnnotation(bounds: CGRect(x: 48, y: 842 - 510 - 22, width: 22, height: 22), forType: .widget, withProperties: nil)
+            checkbox.widgetFieldType = .button; checkbox.fieldName = "reviewed"
+            checkbox.buttonWidgetState = .offState
+            checkbox.color = .clear
+            page.addAnnotation(checkbox)
         }
         return pdf
     }

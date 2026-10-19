@@ -13,7 +13,9 @@ final class FormScanUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["scanDocument"].waitForExistence(timeout: 10))
         XCTAssertLessThan(app.navigationBars.firstMatch.frame.minY, 120)
-        XCTAssertGreaterThan(app.buttons["scanDocument"].frame.maxY, app.frame.height * 0.8)
+        XCTAssertTrue(app.tabBars.buttons["Documentos"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Ajustes"].exists)
+        XCTAssertFalse(app.buttons["mainMenu"].exists)
         screenshot("01-home-light")
         app.terminate()
         app.launchArguments += ["-ui-testing-dark"]
@@ -85,13 +87,19 @@ final class FormScanUITests: XCTestCase {
         app.buttons["importDocument"].tap()
         XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 8) || app.buttons["Cancelar"].exists)
         screenshot("10-import-picker")
+        let cancel = app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Cancelar"]
+        cancel.tap()
+        XCTAssertTrue(app.buttons["importDocument"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts.firstMatch.exists)
     }
     func testAccessibilityTextLayout() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.buttons["scanDocument"].waitForExistence(timeout: 10))
+        for _ in 0..<3 where !app.buttons["scanDocument"].isHittable { app.swipeUp() }
         XCTAssertTrue(app.buttons["scanDocument"].isHittable)
+        if !app.buttons["importDocument"].isHittable { app.swipeUp() }
         XCTAssertTrue(app.buttons["importDocument"].isHittable)
         screenshot("11-large-text")
     }
@@ -124,11 +132,9 @@ final class FormScanUITests: XCTestCase {
         next.tap()
         XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 12))
         screenshot("16-tutorial-example")
-        app.navigationBars.buttons.firstMatch.tap()
-        let library = app.buttons["allDocuments"]
-        XCTAssertTrue(library.waitForExistence(timeout: 8))
-        if !library.isHittable { app.swipeUp() }
-        library.tap()
+        app.buttons["closeDocument"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Documentos"].waitForExistence(timeout: 8))
+        app.tabBars.buttons["Documentos"].tap()
         XCTAssertTrue(app.navigationBars["Documentos"].waitForExistence(timeout: 8))
         screenshot("18-document-library")
         app.staticTexts["Formulario de ejemplo"].firstMatch.tap()
@@ -138,9 +144,9 @@ final class FormScanUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
-        let menu = app.buttons["mainMenu"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 8)); menu.tap()
-        screenshot("19-home-menu")
+        let settings = app.tabBars.buttons["Ajustes"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 8)); settings.tap()
+        screenshot("19-settings")
         app.buttons["Modelos de IA"].tap()
         XCTAssertTrue(app.navigationBars["Modelos de IA"].waitForExistence(timeout: 8))
         // Previous test runs may already have downloaded the compact model.
@@ -158,5 +164,63 @@ final class FormScanUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "Installing a model must not open its external model card")
         XCTAssertTrue(app.navigationBars["Modelos de IA"].isHittable)
         screenshot("17-models-installed")
+    }
+
+    func testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-example"]
+        app.launch()
+        let picker = app.segmentedControls["editorMode"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        let share = app.buttons["exportPDF"]
+        let options = app.buttons["documentOptions"]
+        let shareFrame = share.frame, optionsFrame = options.frame
+        for _ in 0..<3 {
+            picker.buttons["Formulario"].tap()
+            XCTAssertEqual(share.frame.minX, shareFrame.minX, accuracy: 1)
+            XCTAssertEqual(options.frame.minX, optionsFrame.minX, accuracy: 1)
+            picker.buttons["Documento"].tap()
+            XCTAssertEqual(share.frame.minX, shareFrame.minX, accuracy: 1)
+            XCTAssertEqual(options.frame.minX, optionsFrame.minX, accuracy: 1)
+        }
+        screenshot("20-editor-stable")
+        picker.buttons["Formulario"].tap()
+        let checkbox = app.switches["He revisado los datos del formulario."]
+        if !checkbox.isHittable { app.swipeUp() }
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
+        checkbox.tap()
+        screenshot("21-checkbox-label")
+        options.tap()
+        XCTAssertTrue(app.buttons["Cambiar nombre"].waitForExistence(timeout: 5))
+    }
+
+    func testImportActualPDFThroughFilesAndReopenIt() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-import"]
+        app.launch()
+        app.buttons["importDocument"].tap()
+        let file = app.staticTexts["Importar prueba"].firstMatch
+        let fullName = app.staticTexts["Importar prueba.pdf"].firstMatch
+        if !file.waitForExistence(timeout: 5) && !fullName.exists {
+            let browse = app.buttons["Browse"].exists ? app.buttons["Browse"] : app.buttons["Explorar"]
+            if browse.exists { browse.tap() }
+            let location = app.staticTexts["On My iPhone"].exists ? app.staticTexts["On My iPhone"] : app.staticTexts["En mi iPhone"]
+            if location.waitForExistence(timeout: 5) { location.tap() }
+            let folder = app.staticTexts["FormScan"].firstMatch
+            if folder.waitForExistence(timeout: 5) { folder.tap() }
+        }
+        let actualFile = file.exists ? file : fullName
+        XCTAssertTrue(actualFile.waitForExistence(timeout: 10))
+        screenshot("22-import-actual-file")
+        actualFile.tap()
+        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Importar prueba"].exists)
+        screenshot("23-imported-pdf")
+        app.terminate()
+        app.launchArguments = ["-ui-testing-reopen"]
+        app.launch()
+        let saved = app.staticTexts["Importar prueba"].firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 10)); saved.tap()
+        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 10))
     }
 }

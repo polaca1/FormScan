@@ -9,6 +9,8 @@ struct EditorView: View {
     @EnvironmentObject private var models: ModelStore
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     @State private var mode = EditorMode.document
     @State private var page = 0
     @State private var selection: FormEntry?
@@ -28,8 +30,21 @@ struct EditorView: View {
                     Divider()
                     form.frame(minWidth: 300, idealWidth: 360, maxWidth: 420)
                 }
-            } else if mode == .document { preview }
-            else { form }
+            } else {
+                // Keep PDFKit and the form alive: switching modes must not
+                // rebuild PDF pages, reset zoom or reconstruct the toolbar.
+                ZStack {
+                    preview
+                        .opacity(mode == .document ? 1 : 0)
+                        .allowsHitTesting(mode == .document)
+                        .accessibilityHidden(mode != .document)
+                    form
+                        .opacity(mode == .form ? 1 : 0)
+                        .allowsHitTesting(mode == .form)
+                        .accessibilityHidden(mode != .form)
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: mode)
+            }
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(session.item.title)
@@ -69,6 +84,10 @@ struct EditorView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Cerrar", systemImage: "xmark") { session.flush(); dismiss() }
+                    .accessibilityIdentifier("closeDocument")
+            }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Listo") { focusedField = nil }
@@ -81,12 +100,14 @@ struct EditorView: View {
                 }
                 .accessibilityIdentifier("exportPDF").disabled(session.busy)
             }
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Cambiar nombre", systemImage: "pencil") { title = session.item.title; renaming = true }
                     Button("Ir a la primera página", systemImage: "doc") { page = 0; mode = .document }
                 } label: { Image(systemName: "ellipsis") }
                 .accessibilityLabel("Opciones del documento")
+                .accessibilityIdentifier("documentOptions")
             }
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Detectar", systemImage: "sparkles") {

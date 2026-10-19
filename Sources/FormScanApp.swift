@@ -1,13 +1,9 @@
 import SwiftUI
 import PDFKit
-import UniformTypeIdentifiers
 import VisionKit
 
-enum AppRoute: Hashable {
-    case document(UUID)
-    case library
-    case models
-}
+private struct EditorDestination: Identifiable { let id: UUID }
+private enum AppSection: Hashable { case home, documents, settings }
 
 @main
 struct FormScanApp: App {
@@ -21,7 +17,7 @@ struct FormScanApp: App {
     }
     var body: some Scene {
         WindowGroup {
-            LibraryView(library: library).environmentObject(models).tint(.blue).preferredColorScheme(testAppearance)
+            LibraryView(library: library).environmentObject(models).preferredColorScheme(testAppearance)
         }
     }
 }
@@ -29,171 +25,105 @@ struct FormScanApp: App {
 struct LibraryView: View {
     @ObservedObject var library: DocumentLibrary
     @EnvironmentObject private var models: ModelStore
-    @State private var path: [AppRoute] = []
+    @State private var section = AppSection.home
+    @State private var openedDocument: EditorDestination?
     @State private var scanner = false
     @State private var importer = false
+    @State private var pickedURL: URL?
+    @State private var scannedPages: [UIImage]?
+    @State private var importing = false
     @State private var error: String?
     @State private var tutorial = false
     @State private var tutorialChecked = false
+    @State private var tutorialExample = false
     @AppStorage("onboarding.complete") private var onboarded = false
-    @Environment(\.dynamicTypeSize) private var typeSize
-    private var actionLayout: AnyLayout {
-        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
+
+    private var navigation: some View {
+        TabView(selection: $section) {
+            Tab("Inicio", systemImage: "house", value: AppSection.home) {
+                NavigationStack {
+                    StartView(scan: startScanner, importFile: { importer = true }, example: openExample)
+                        .navigationTitle("Inicio")
+                }
+            }
+            Tab("Documentos", systemImage: "folder", value: AppSection.documents) {
+                NavigationStack {
+                    AllDocumentsView(library: library) { openedDocument = EditorDestination(id: $0) }
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu("Añadir documento", systemImage: "plus") {
+                                    Button("Importar archivo", systemImage: "folder") { importer = true }
+                                    Button("Escanear", systemImage: "camera.viewfinder", action: startScanner)
+                                }
+                            }
+                        }
+
+                }
+            }
+            Tab("Ajustes", systemImage: "gearshape", value: AppSection.settings) {
+                NavigationStack {
+                    List {
+                        Section {
+                            NavigationLink { ModelSettingsView(store: models) } label: {
+                                Label("Modelos de IA", systemImage: "cpu")
+                            }.accessibilityIdentifier("openModels")
+                        }
+                        Section {
+                            Button { tutorial = true } label: {
+                                Label("Primeros pasos", systemImage: "book.closed")
+                            }.buttonStyle(.borderless)
+                        }
+                    }.navigationTitle("Ajustes")
+                }
+            }
+        }
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                if library.documents.isEmpty {
-                    welcome
-                        .listRowInsets(EdgeInsets(top: 24, leading: 24, bottom: 24, trailing: 24))
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    Section {
-                        Button { openExample() } label: {
-                            Label("Probar un formulario de ejemplo", systemImage: "doc.text")
-                        }
-                        .accessibilityIdentifier("openExample")
-                    } footer: {
-                        Label("Tus documentos se guardan solo en este dispositivo.", systemImage: "lock.shield")
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Todo en su sitio.").font(.title2.bold())
-                        Text("Retoma un documento o empieza uno nuevo.").foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 10).listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    Section {
-                        ForEach(Array(library.documents.prefix(3))) { item in
-                            NavigationLink(value: AppRoute.document(item.id)) { DocumentRow(item: item, library: library) }
-                                .swipeActions {
-                                    Button("Eliminar", role: .destructive) { library.delete(item) }
-                                }
-                        }
-                    } header: {
-                        HStack {
-                            Text("Recientes")
-                            Spacer()
-                            NavigationLink("Ver todos", value: AppRoute.library)
-                        }
-                    } footer: {
-                        Label("Guardado en tu dispositivo", systemImage: "lock.shield")
-                    }
-                }
-                Section("Tu espacio") {
-                    NavigationLink(value: AppRoute.library) {
-                        Label {
-                            HStack { Text("Todos los documentos"); Spacer(); Text("\(library.documents.count)").foregroundStyle(.secondary) }
-                        } icon: { Image(systemName: "folder") }
-                    }.accessibilityIdentifier("allDocuments")
-                    NavigationLink(value: AppRoute.models) {
-                        Label {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Modelos de IA")
-                                Text(models.active.name).font(.caption).foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "cpu") }
-                    }.accessibilityIdentifier("openModels")
-                    Button { tutorial = true } label: { Label("Guía de primeros pasos", systemImage: "book.closed") }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle("FormScan")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button("Documentos", systemImage: "folder") { path.append(.library) }
-                        Button("Modelos de IA", systemImage: "cpu") { path.append(.models) }
-                        Button("Primeros pasos", systemImage: "book.closed") { tutorial = true }
-                    } label: { Image(systemName: "line.3.horizontal") }
-                    .accessibilityLabel("Menú principal").accessibilityIdentifier("mainMenu")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Importar PDF o imagen", systemImage: "folder") { importer = true }
-                        Button("Formulario de ejemplo", systemImage: "doc.text") { openExample() }
-                        Button("Ver tutorial", systemImage: "book.closed") { tutorial = true }
-                    } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Nuevo documento")
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                GlassEffectContainer(spacing: 16) {
-                    actionLayout {
-                        Button { importer = true } label: {
-                            Label("Importar", systemImage: "folder").frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.glass).accessibilityIdentifier("importDocument")
-                        Button { startScanner() } label: {
-                            Label("Escanear", systemImage: "camera.viewfinder").frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.glassProminent).accessibilityIdentifier("scanDocument")
-                    }.font(.headline)
-                }
-                .padding(.horizontal, 20).padding(.vertical, 12)
-            }
-            .navigationDestination(for: AppRoute.self) { route in
-                switch route {
-                case .library: AllDocumentsView(library: library)
-                case .models: ModelSettingsView(store: models)
-                case .document(let id):
-                    if let session = library.session(id: id) { EditorView(session: session) }
-                    else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
-                }
+        navigation
+        .fullScreenCover(item: $openedDocument) { destination in
+            NavigationStack {
+                if let session = library.session(id: destination.id) { EditorView(session: session) }
+                else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
             }
         }
-        .fullScreenCover(isPresented: $tutorial) {
-            OnboardingView { example in
-                onboarded = true; tutorial = false
-                if example { openExample() }
-            }
+        .sheet(isPresented: $importer, onDismiss: importPickedFile) {
+            DocumentPicker { url in pickedURL = url; importer = false }
         }
-        .fullScreenCover(isPresented: $scanner) {
+        .fullScreenCover(isPresented: $scanner, onDismiss: importScannedPages) {
             ScannerView { result in
                 switch result {
-                case .success(let images):
-                    let pdf = PDFDocument()
-                    images.compactMap { PDFPage(image: $0) }.forEach { pdf.insert($0, at: pdf.pageCount) }
-                    importDocument(pdf, title: "Escaneo")
+                case .success(let images): scannedPages = images
                 case .failure(let failure): error = failure.localizedDescription
                 }
             }.ignoresSafeArea()
         }
-        .fileImporter(isPresented: $importer, allowedContentTypes: [.pdf, .image]) { result in
-            do {
-                let url = try result.get()
-                let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
-                let data = try Data(contentsOf: url)
-                let pdf: PDFDocument
-                if let document = PDFDocument(data: data) { pdf = document }
-                else if let image = UIImage(data: data), let page = PDFPage(image: image) {
-                    pdf = PDFDocument(); pdf.insert(page, at: 0)
-                } else { throw FormScanError.invalidDocument }
-                importDocument(pdf, title: url.deletingPathExtension().lastPathComponent)
-            } catch { self.error = error.localizedDescription }
+        .fullScreenCover(isPresented: $tutorial, onDismiss: {
+            if tutorialExample { tutorialExample = false; openExample() }
+        }) {
+            OnboardingView { example in
+                onboarded = true; tutorialExample = example; tutorial = false
+            }
+        }
+        .overlay {
+            if importing {
+                ProgressView("Importando…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            }
         }
         .alert("No se pudo completar", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("Aceptar", role: .cancel) { error = nil }
         } message: { Text(error ?? "") }
         .onAppear {
-            if !tutorialChecked {
-                tutorialChecked = true
-                let arguments = ProcessInfo.processInfo.arguments
-                if arguments.contains("-ui-testing-onboarding") || (!arguments.contains("-ui-testing") && !arguments.contains("-ui-testing-reopen") && !onboarded) { tutorial = true }
-            }
-            if ProcessInfo.processInfo.arguments.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
+            guard !tutorialChecked else { return }
+            tutorialChecked = true
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-ui-testing-onboarding") || (!args.contains("-ui-testing") && !args.contains("-ui-testing-reopen") && !onboarded) { tutorial = true }
+            if args.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
+            if args.contains("-ui-testing-reopen") { section = .documents }
+            #if DEBUG
+            if args.contains("-ui-testing-import") { prepareImportFixture() }
+            #endif
         }
-    }
-
-    private var welcome: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Image(systemName: "text.viewfinder")
-                .font(.system(size: 76, weight: .light)).foregroundStyle(.blue)
-            .frame(maxWidth: .infinity, minHeight: 158).accessibilityHidden(true)
-            Text("Menos papel.\nTodo resuelto.").font(.largeTitle.bold()).tracking(-1)
-            Text("Escanea un formulario, completa sus campos y llévatelo listo para compartir.")
-                .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(.bottom, 8)
     }
     private func startScanner() {
         guard VNDocumentCameraViewController.isSupported else {
@@ -202,15 +132,70 @@ struct LibraryView: View {
         }
         scanner = true
     }
-    private func openExample() { importDocument(ExampleDocument.make(), title: "Formulario de ejemplo") }
-    private func importDocument(_ pdf: PDFDocument, title: String) {
-        do { path.append(.document(try library.add(pdf, title: title))) }
-        catch { self.error = error.localizedDescription }
+    private func openExample() { openDocument(ExampleDocument.make(), title: "Formulario de ejemplo") }
+    private func openDocument(_ pdf: PDFDocument, title: String) {
+        do {
+            let id = try library.add(pdf, title: title)
+            section = .documents
+            openedDocument = EditorDestination(id: id)
+        } catch { self.error = error.localizedDescription }
+    }
+    private func importPickedFile() {
+        guard let url = pickedURL else { return }
+        pickedURL = nil; importing = true
+        Task {
+            defer { importing = false }
+            do {
+                let data = try await Task.detached(priority: .userInitiated) { try DocumentImport.read(url) }.value
+                openDocument(try DocumentImport.decode(data), title: url.deletingPathExtension().lastPathComponent)
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+    private func importScannedPages() {
+        guard let images = scannedPages else { return }
+        scannedPages = nil
+        let pdf = PDFDocument()
+        images.compactMap { PDFPage(image: $0) }.forEach { pdf.insert($0, at: pdf.pageCount) }
+        openDocument(pdf, title: "Escaneo")
+    }
+    #if DEBUG
+    private func prepareImportFixture() {
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? ExampleDocument.make().dataRepresentation()?.write(to: directory.appendingPathComponent("Importar prueba.pdf"), options: .atomic)
+    }
+    #endif
+}
+
+private struct StartView: View {
+    let scan: () -> Void
+    let importFile: () -> Void
+    let example: () -> Void
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                Image(systemName: "text.viewfinder").font(.system(size: 54, weight: .light))
+                    .foregroundStyle(.blue).padding(.top, 36).accessibilityHidden(true)
+                Text("Completa tu próximo documento.").font(.largeTitle.bold())
+                Text("Escanea una hoja o abre un archivo para empezar.")
+                    .font(.title3).foregroundStyle(.secondary)
+                VStack(spacing: 14) {
+                    Button(action: scan) {
+                        Label("Escanear", systemImage: "camera.viewfinder").frame(maxWidth: .infinity, minHeight: 48)
+                    }.buttonStyle(.glassProminent).accessibilityIdentifier("scanDocument")
+                    Button(action: importFile) {
+                        Label("Importar archivo", systemImage: "folder").frame(maxWidth: .infinity, minHeight: 48)
+                    }.buttonStyle(.glass).accessibilityIdentifier("importDocument")
+                }.font(.headline)
+                Button("Probar un ejemplo", action: example).accessibilityIdentifier("openExample")
+                    .padding(.top, 4)
+            }.frame(maxWidth: 540, alignment: .leading).padding(28).frame(maxWidth: .infinity)
+        }.background(Color(uiColor: .systemGroupedBackground))
     }
 }
 
 struct AllDocumentsView: View {
     @ObservedObject var library: DocumentLibrary
+    let open: (UUID) -> Void
     @State private var search = ""
     private var documents: [SavedDocument] {
         library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
@@ -218,7 +203,8 @@ struct AllDocumentsView: View {
     var body: some View {
         List {
             ForEach(documents) { item in
-                NavigationLink(value: AppRoute.document(item.id)) { DocumentRow(item: item, library: library) }
+                Button { open(item.id) } label: { DocumentRow(item: item, library: library) }
+                    .buttonStyle(.plain)
                     .swipeActions { Button("Eliminar", role: .destructive) { library.delete(item) } }
             }
         }
