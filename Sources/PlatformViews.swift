@@ -106,19 +106,20 @@ struct PDFCanvas: UIViewRepresentable {
     }
     func updateUIView(_ view: PDFView, context: Context) {
         context.coordinator.parent = self
-        if view.document !== document { view.document = document }
+        let documentChanged = view.document !== document
+        if documentChanged { view.document = document }
         if let current = view.currentPage, document.index(for: current) != page, let target = document.page(at: page) {
             view.go(to: target)
         }
-        for overlay in context.coordinator.overlays { overlay.fields = fields; overlay.setNeedsDisplay() }
-        if context.coordinator.lastRevision != revision {
+        if documentChanged || context.coordinator.lastRevision != revision {
+            for overlay in context.coordinator.overlays { overlay.fields = fields; overlay.setNeedsDisplay() }
             for index in 0..<document.pageCount {
                 if let page = document.page(at: index) { view.annotationsChanged(on: page) }
             }
             context.coordinator.lastRevision = revision
+            view.documentView?.setNeedsDisplay()
+            view.setNeedsDisplay()
         }
-        view.documentView?.setNeedsDisplay()
-        view.setNeedsDisplay()
     }
     static func dismantleUIView(_ view: PDFView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)
