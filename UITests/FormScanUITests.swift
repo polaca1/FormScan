@@ -194,7 +194,10 @@ final class FormScanUITests: XCTestCase {
         let checkbox = app.switches["He revisado los datos del formulario."]
         if !checkbox.isHittable { app.swipeUp() }
         XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
-        checkbox.tap()
+        // The accessible switch includes its label; tap the control itself.
+        checkbox.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        let marked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: checkbox)
+        XCTAssertEqual(XCTWaiter.wait(for: [marked], timeout: 5), .completed)
         screenshot("21-checkbox-label")
         picker.buttons["Documento"].tap()
         screenshot("25-checkbox-document")
@@ -208,9 +211,9 @@ final class FormScanUITests: XCTestCase {
         app.launch()
         app.buttons["importDocument"].tap()
         executionTimeAllowance = 180
-        let browse = app.buttons["Browse"].exists ? app.buttons["Browse"] : app.buttons["Explorar"]
+        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "Explorar"])).firstMatch
         if browse.waitForExistence(timeout: 10) { browse.tap() }
-        let location = app.staticTexts["On My iPhone"].exists ? app.staticTexts["On My iPhone"] : app.staticTexts["En mi iPhone"]
+        let location = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "En mi iPhone"])).firstMatch
         if location.waitForExistence(timeout: 10) { location.tap() }
         let folder = app.staticTexts["FormScan"].firstMatch
         if folder.waitForExistence(timeout: 10) { folder.tap() }

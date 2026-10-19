@@ -69,6 +69,11 @@ jobs:
         run: |
           set -o pipefail
           python3 -u Scripts/start_simulator.py | tee simulator-start.log
+      - name: Verify actual Files import and a checked box first
+        timeout-minutes: 12
+        run: |
+          set -o pipefail
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test | tee critical-ui-tests.log
       - name: Test PDF editing and three real offline models
         timeout-minutes: 10
         run: |
@@ -78,14 +83,20 @@ jobs:
         timeout-minutes: 12
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
       - name: Export UI screenshots
         if: always()
         run: |
           mkdir -p Screenshots
-          if [ -d TestResults.xcresult ]; then
-            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path Screenshots || true
-          fi
+          python3 - <<'PYTHON'
+          import pathlib, subprocess
+          for bundle, folder in [('CriticalUI.xcresult', 'critical'), ('TestResults.xcresult', 'standard')]:
+              if pathlib.Path(bundle).exists():
+                  try:
+                      subprocess.run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', bundle, '--output-path', 'Screenshots/' + folder], timeout=90, check=True)
+                  except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
+                      print('Could not export attachments:', error)
+          PYTHON
       - name: Package and verify IPA and sources
         run: |
           mkdir -p release
@@ -101,14 +112,15 @@ jobs:
           python3 - <<'PY'
           import json, pathlib, re, shutil
           root = pathlib.Path('Screenshots')
-          manifest = json.loads((root / 'manifest.json').read_text())
           count = 0
-          for case in manifest:
-              for attachment in case['attachments']:
-                  match = re.match(r'(\d{2}-[a-z-]+)_', attachment['suggestedHumanReadableName'])
-                  if match and attachment['exportedFileName'].endswith('.png'):
-                      shutil.copyfile(root / attachment['exportedFileName'], pathlib.Path('release') / (match[1] + '.png'))
-                      count += 1
+          for manifest_path in root.rglob('manifest.json'):
+              manifest = json.loads(manifest_path.read_text())
+              for case in manifest:
+                  for attachment in case['attachments']:
+                      match = re.match(r'(\d{2}-[a-z-]+)_', attachment['suggestedHumanReadableName'])
+                      if match and attachment['exportedFileName'].endswith('.png'):
+                          shutil.copyfile(manifest_path.parent / attachment['exportedFileName'], pathlib.Path('release') / (match[1] + '.png'))
+                          count += 1
           assert count >= 8, 'Expected UI evidence from the simulator tests'
           print(f'Packaged {count} UI screenshots for review')
           PY
@@ -121,6 +133,8 @@ jobs:
             Screenshots/
             TestResults.xcresult/
             UnitTests.xcresult/
+            CriticalUI.xcresult/
+            critical-ui-tests.log
             unit-tests.log
             *-build.log
             simulator-tests.log
