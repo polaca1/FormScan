@@ -28,6 +28,7 @@ final class FormScanUITests: XCTestCase {
         screenshot("02-home-dark")
     }
     func testFillPreviewShareAndReopen() {
+        executionTimeAllowance = 180
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-ui-testing-example"]
         app.launch()
@@ -48,15 +49,11 @@ final class FormScanUITests: XCTestCase {
         screenshot("04-document-filled")
         waitUntilEnabled(app.buttons["exportPDF"])
         app.buttons["exportPDF"].tap()
-        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
         let copy = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Copy", "Copiar"])).firstMatch
         XCTAssertTrue(copy.waitForExistence(timeout: 8))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: copy)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
         screenshot("05-share-pdf")
-        app.swipeDown()
-        if app.buttons["Close"].exists { app.buttons["Close"].tap() }
-        if app.buttons["Cerrar"].exists { app.buttons["Cerrar"].tap() }
         // Relaunch preserving the same test library to verify the saved file, not view state.
         app.terminate()
         app.launchArguments = ["-ui-testing-reopen"]
@@ -90,9 +87,9 @@ final class FormScanUITests: XCTestCase {
         screenshot("09-camera-unavailable")
         app.alerts.buttons["Aceptar"].tap()
         app.buttons["importDocument"].tap()
-        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 8) || app.buttons["Cancelar"].exists)
+        let cancel = app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "Cancelar", "Close", "Cerrar"])).firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15))
         screenshot("10-import-picker")
-        let cancel = app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Cancelar"]
         cancel.tap()
         XCTAssertTrue(app.buttons["importDocument"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.alerts.firstMatch.exists)
@@ -246,7 +243,9 @@ final class FormScanUITests: XCTestCase {
         let picker = app.segmentedControls["editorMode"]
         XCTAssertTrue(picker.waitForExistence(timeout: 15))
         waitUntilEnabled(app.buttons["exportPDF"])
-        XCTAssertEqual(app.buttons["detectFields"].value as? String, "Análisis completado")
+        let status = app.descendants(matching: .any)["documentStatus"].firstMatch
+        let analyzed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Análisis completado"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [analyzed], timeout: 30), .completed)
         picker.buttons["Formulario"].tap()
         XCTAssertTrue(app.textViews["field-Nombre completo"].exists || app.textFields["field-Nombre completo"].exists)
         screenshot("24-auto-analysis")

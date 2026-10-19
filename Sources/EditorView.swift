@@ -62,6 +62,9 @@ struct EditorView: View {
                     Label("\(session.item.fields.filter(\.completed).count)/\(session.item.fields.count) completados", systemImage: "checkmark.circle")
                 }
                 .font(.caption).foregroundStyle(.secondary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("documentStatus")
+                .accessibilityLabel("Página \(page + 1) de \(session.document.pageCount). \(session.item.fields.filter(\.completed).count) de \(session.item.fields.count) campos completados. \(session.busy ? "Analizando" : session.item.analyzed == true ? "Análisis completado" : "Análisis pendiente")")
             }
             .padding(.horizontal, 20).padding(.vertical, 10)
             .background(.bar)
