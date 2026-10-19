@@ -1,6 +1,6 @@
 # Diseño de FormScan según las guías oficiales de Apple
 
-Revisión aplicada a FormScan 2.1.0. Estas son decisiones de implementación basadas en la documentación de Apple, no una certificación de Apple.
+Revisión aplicada a FormScan 2.2.0. La ampliación específica para iOS 27 está en [iOS27.md](iOS27.md). Estas son decisiones de implementación basadas en la documentación de Apple, no una certificación de Apple.
 
 | Pauta oficial | Aplicación en FormScan |
 | --- | --- |
