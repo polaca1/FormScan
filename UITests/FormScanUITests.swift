@@ -1,6 +1,10 @@
 import XCTest
 
 final class FormScanUITests: XCTestCase {
+    private func waitUntilEnabled(_ element: XCUIElement, timeout: TimeInterval = 30) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: timeout), .completed)
+    }
     private func screenshot(_ name: String) {
         // Allow native glass/sheet presentation animations to finish before capturing evidence.
         Thread.sleep(forTimeInterval: 0.5)
@@ -42,6 +46,7 @@ final class FormScanUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [documentMode], timeout: 5), .completed)
         XCTAssertTrue(app.descendants(matching: .any)["documentPreview"].firstMatch.waitForExistence(timeout: 5))
         screenshot("04-document-filled")
+        waitUntilEnabled(app.buttons["exportPDF"])
         app.buttons["exportPDF"].tap()
         XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 8) || app.buttons["Copy"].exists || app.buttons["Copiar"].exists)
         let copy = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Copy", "Copiar"])).firstMatch
@@ -108,6 +113,7 @@ final class FormScanUITests: XCTestCase {
         app.launchArguments = ["-ui-testing", "-ui-testing-example"]
         app.launch()
         XCTAssertTrue(app.buttons["addField"].waitForExistence(timeout: 15))
+        waitUntilEnabled(app.buttons["addField"])
         app.buttons["addField"].tap(); app.buttons["Campo de texto"].tap()
         let content = app.textViews["Contenido"].exists ? app.textViews["Contenido"] : app.textFields["Contenido"]
         XCTAssertTrue(content.waitForExistence(timeout: 5)); content.tap(); content.typeText("Texto manual")
@@ -223,4 +229,17 @@ final class FormScanUITests: XCTestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 10)); saved.tap()
         XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 10))
     }
+    func testNewDocumentsAnalyzeAutomaticallyAndPersistCompletion() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-example"]
+        app.launch()
+        let picker = app.segmentedControls["editorMode"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        waitUntilEnabled(app.buttons["exportPDF"])
+        XCTAssertEqual(app.buttons["detectFields"].value as? String, "Análisis completado")
+        picker.buttons["Formulario"].tap()
+        XCTAssertTrue(app.textViews["field-Nombre completo"].exists || app.textFields["field-Nombre completo"].exists)
+        screenshot("24-auto-analysis")
+    }
+
 }

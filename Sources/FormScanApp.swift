@@ -137,6 +137,7 @@ struct LibraryView: View {
         do {
             let id = try library.add(pdf, title: title)
             section = .documents
+            library.session(id: id)?.startAnalysis(using: models, automatic: true)
             openedDocument = EditorDestination(id: id)
         } catch { self.error = error.localizedDescription }
     }

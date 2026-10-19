@@ -19,7 +19,7 @@ enum AIModel: String, CaseIterable, Identifiable, Codable {
     }
     var detail: String {
         switch self {
-        case .nano: "FP32. Buen equilibrio entre precisión, memoria y tiempo de análisis. Recomendado para el iPhone 14 Pro y documentos ya rellenados."
+        case .nano: "FP32. Buen equilibrio entre precisión, memoria y tiempo de análisis. Adecuado también para documentos ya rellenados."
         case .compact: "FP16. Ocupa aproximadamente la mitad. La precisión publicada es muy cercana a FP32; no implica mayor velocidad en CPU."
         case .detailed: "INT8, resolución de 1024 px. Puede detectar mejor campos en formularios vacíos; consume más memoria y tarda más. En formularios ya escritos puede rendir peor que Nano."
         }
@@ -49,13 +49,13 @@ enum AIModel: String, CaseIterable, Identifiable, Codable {
 struct DeviceProfile {
     let identifier: String
     let memory: UInt64
-    init() {
+    init(identifier: String? = nil, memory: UInt64 = ProcessInfo.processInfo.physicalMemory) {
         var system = utsname(); uname(&system)
-        identifier = Mirror(reflecting: system.machine).children.compactMap { value in
+        self.identifier = identifier ?? Mirror(reflecting: system.machine).children.compactMap { value in
             guard let byte = value.value as? Int8, byte != 0 else { return nil as String? }
             return String(UnicodeScalar(UInt8(bitPattern: byte)))
         }.joined()
-        memory = ProcessInfo.processInfo.physicalMemory
+        self.memory = memory
     }
     var name: String {
         switch identifier {
@@ -72,6 +72,14 @@ struct DeviceProfile {
         case "arm64", "x86_64": "Simulador"
         default: UIDevice.current.model
         }
+    }
+    /// Resource policy, not a claim of measured model accuracy on this device.
+    func recommended(lowPower: Bool, thermal: ProcessInfo.ThermalState) -> AIModel {
+        memory < 5 * 1_073_741_824 || lowPower || thermal == .serious || thermal == .critical ? .compact : .nano
+    }
+    func parallelism(lowPower: Bool, thermal: ProcessInfo.ThermalState) -> Int {
+        if lowPower || thermal == .serious || thermal == .critical || memory < 5 * 1_073_741_824 { return 1 }
+        return memory >= 8 * 1_073_741_824 ? 3 : 2
     }
     var chip: String? { identifier.hasPrefix("iPhone15,") ? "A16 Bionic" : nil }
     var memoryDescription: String { ByteCountFormatter.string(fromByteCount: Int64(memory), countStyle: .memory) }
@@ -95,7 +103,10 @@ final class ModelStore: ObservableObject {
     @Published private(set) var downloading: AIModel?
     @Published private(set) var benchmarking = false
     @Published private(set) var timings: [AIModel: Double] = [:]
+    @Published var multiAI: Bool { didSet { defaults.set(multiAI, forKey: "ai.multi") } }
+    @Published private(set) var constrained = false
     @Published var error: String?
+    private var observations: [NSObjectProtocol] = []
     let device = DeviceProfile()
     private let directory: URL
     private let defaults: UserDefaults
@@ -103,6 +114,7 @@ final class ModelStore: ObservableObject {
 
     init(directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        multiAI = defaults.object(forKey: "ai.multi") as? Bool ?? true
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("AIModels", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         var values = URLResourceValues(); values.isExcludedFromBackup = true
@@ -114,9 +126,41 @@ final class ModelStore: ObservableObject {
             if (try? path.resourceValues(forKeys: [.fileSizeKey]).fileSize) == Int(model.bytes) { installed.insert(model) }
         }
         if !installed.contains(selected) { selected = .nano }
-        if ProcessInfo.processInfo.arguments.contains("-ui-testing") { selected = .nano; automatic = true }
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing") { selected = .nano; automatic = false; multiAI = false }
+        refreshConditions()
+        for name in [ProcessInfo.powerStateDidChangeNotification, ProcessInfo.thermalStateDidChangeNotification] {
+            observations.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refreshConditions() }
+            })
+        }
     }
-    var active: AIModel { automatic || !installed.contains(selected) ? .nano : selected }
+    private func refreshConditions() {
+        constrained = ProcessInfo.processInfo.isLowPowerModeEnabled || ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical
+    }
+    var recommended: AIModel { device.recommended(lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled, thermal: ProcessInfo.processInfo.thermalState) }
+    var active: AIModel { automatic ? (installed.contains(recommended) ? recommended : .nano) : (installed.contains(selected) ? selected : .nano) }
+    var analysisJobs: [InferenceJob] {
+        let choices = multiAI ? [active] + AIModel.allCases.filter { $0 != active && installed.contains($0) } : [active]
+        return choices.compactMap { model in url(for: model).map { InferenceJob(model: model, url: $0) } }
+    }
+    var parallelism: Int { device.parallelism(lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled, thermal: ProcessInfo.processInfo.thermalState) }
+    var recommendationReason: String {
+        if constrained { return "El ahorro de energía o la temperatura aconsejan Nano compacto y análisis en serie. Si no está instalado, se usa Nano incluido." }
+        if device.memory < 5 * 1_073_741_824 { return "Con esta memoria se recomienda Nano compacto y un modelo cada vez. Nano incluido sigue disponible sin descargas." }
+        return "La memoria disponible permite Nano equilibrado y hasta \(parallelism) análisis simultáneos. FFDetr queda como alternativa para contrastar formularios vacíos."
+    }
+    func installEnsemble() {
+        guard downloadOperation == nil else { return }
+        downloadOperation = Task { [weak self] in
+            guard let self else { return }
+            defer { self.downloadOperation = nil }
+            for model in AIModel.allCases where !self.installed.contains(model) {
+                await self.install(model)
+                if Task.isCancelled || self.error != nil { return }
+            }
+            self.useRecommended(); self.multiAI = true
+        }
+    }
     func url(for model: AIModel) -> URL? {
         if model == .nano { return Bundle.main.url(forResource: "model", withExtension: "onnx") }
         guard installed.contains(model) else { return nil }
@@ -126,7 +170,7 @@ final class ModelStore: ObservableObject {
         guard installed.contains(model), !benchmarking else { return }
         selected = model; automatic = false; persist()
     }
-    func useRecommended() { selected = .nano; automatic = true; persist() }
+    func useRecommended() { selected = recommended; automatic = true; persist() }
     private func persist() {
         defaults.set(selected.rawValue, forKey: "ai.model"); defaults.set(automatic, forKey: "ai.automatic")
     }

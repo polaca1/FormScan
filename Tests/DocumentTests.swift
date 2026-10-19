@@ -46,10 +46,10 @@ final class DocumentTests: XCTestCase {
         session.addField(checkbox: true, page: 1)
         var field = try XCTUnwrap(session.item.fields.first)
         field.checked = true; session.update(field)
-        XCTAssertEqual(pdf.page(at: 1)?.annotations.first?.contents, "✓")
+        XCTAssertEqual(pdf.page(at: 1)?.annotations.first(where: { $0.type == "Ink" })?.contents, "✓")
         XCTAssertEqual(PDFDocument(url: try session.export())?.pageCount, 2)
         field.checked = false; session.update(field)
-        XCTAssertEqual(pdf.page(at: 1)?.annotations.count, 0)
+        XCTAssertFalse(pdf.page(at: 1)!.annotations.contains { $0.type == "Ink" })
     }
 
     func testCoordinateMappingWithCropOriginAndRotation() {
@@ -139,4 +139,33 @@ final class DocumentTests: XCTestCase {
         XCTAssertEqual(DocumentLibrary(directory: directory).session(id: imageID)?.document.pageCount, 1)
         XCTAssertThrowsError(try DocumentImport.decode(Data("incompatible".utf8)))
     }
+    func testCheckboxIsAVectorTickInLiveSavedAndFlattenedPDF() throws {
+        let original = ExampleDocument.make()
+        let session = DocumentSession(item: SavedDocument(title: "Casillas", pageCount: 1, fields: PDFFormWriter.embeddedFields(in: original)), document: original) { _, _ in }
+        var field = try XCTUnwrap(session.item.fields.first(where: \.checkbox))
+        func inkFraction(_ pdf: PDFDocument) throws -> Double {
+            let side = 100
+            var pixels = [UInt8](repeating: 255, count: side * side * 4)
+            try pixels.withUnsafeMutableBytes { bytes in
+                let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.setFillColor(UIColor.white.cgColor); context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+                let interior = field.rect.insetBy(dx: 3, dy: 3)
+                context.scaleBy(x: CGFloat(side) / interior.width, y: CGFloat(side) / interior.height)
+                context.translateBy(x: -interior.minX, y: -interior.minY)
+                pdf.page(at: 0)!.draw(with: .cropBox, to: context)
+            }
+            return Double(stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0] < 180 }.count) / Double(side * side)
+        }
+        XCTAssertLessThan(try inkFraction(original), 0.04, "An unchecked box must remain empty")
+        field.checked = true; session.update(field)
+        for pdf in [original, try XCTUnwrap(PDFDocument(data: original.dataRepresentation()!)), try XCTUnwrap(PDFDocument(url: session.export()))] {
+            let fraction = try inkFraction(pdf)
+            XCTAssertGreaterThan(fraction, 0.06, "The tick must actually render")
+            XCTAssertLessThan(fraction, 0.45, "A gray filled rectangle is not a tick")
+        }
+        field.checked = false; session.update(field)
+        XCTAssertLessThan(try inkFraction(try XCTUnwrap(PDFDocument(url: session.export()))), 0.04)
+    }
+
 }

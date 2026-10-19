@@ -25,3 +25,10 @@ La adaptación es una modificación de FormScan. Se conservan autoría, licencia
 La aplicación verifica tamaño y SHA-256 y ejecuta una inferencia real antes de habilitar un modelo descargado. Una descarga cancelada, incompleta o incompatible conserva el modelo anterior. Los modelos alternativos no aumentan el tamaño de la IPA y pueden eliminarse sin perder documentos. Instalar modelos requiere internet; analizar documentos no envía datos a internet.
 
 Modelos Nano y FFDetr: [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). ONNX Runtime: [MIT](https://github.com/microsoft/onnxruntime/blob/main/LICENSE). Atribución adicional: James Barrow / CommonForms, Roboflow RF-DETR y Frooodle / Stirling PDF para la exportación original INT8. Las métricas publicadas en diferentes conjuntos de datos no son directamente comparables.
+
+
+## Recomendación por dispositivo y Multi IA
+
+La selección automática lee el identificador del dispositivo, la memoria física, Ahorro de energía y el estado térmico reales. Por debajo de 5 GiB o con ahorro/temperatura alta recomienda Nano FP16 (si falta, usa FP32 incluido) y ejecuta un modelo cada vez. Con 5–8 GiB recomienda FP32 y limita a dos inferencias simultáneas; con al menos 8 GiB permite tres. Es una política conservadora de recursos, no un benchmark de precisión del hardware. El selector manual siempre está disponible y se pueden medir los tiempos en el propio dispositivo.
+
+Multi IA usa los tres modelos cuando están instalados; si falta alguno, usa los disponibles sin exigir conexión ni descargar pesos silenciosamente. El botón de instalación conjunta descarga y verifica los dos opcionales. Publica cada resultado conforme termina, contrasta por familias y refina la geometría cuando coinciden Nano y FFDetr. FP32 y FP16 son variantes correlacionadas de Nano y cuentan como una familia. Las puntuaciones de modelos distintos no están calibradas entre sí: no se promete que el último resultado sea objetivamente más preciso. Se preservan los resultados de una sola familia, los campos anteriores y cualquier edición que se haga durante el análisis.

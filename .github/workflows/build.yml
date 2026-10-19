@@ -1,4 +1,4 @@
-name: Build and verify iOS 26
+name: Build and verify iOS 26 and 27
 on:
   push:
     branches: [main, codex/ios26-rebuild]
@@ -11,13 +11,25 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ios:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            xcode: '26.6'
+            ios: '26'
+          - runner: xcode-27
+            xcode: '27.0'
+            ios: '27'
+    runs-on: ${{ matrix.runner }}
+    env:
+      SIMULATOR_OS_MAJOR: ${{ matrix.ios }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.6'
+          xcode-version: ${{ matrix.xcode }}
       - name: Verify Xcode and SDK
         run: |
           xcodebuild -version
@@ -49,10 +61,10 @@ jobs:
           zip -qr "candidate/FormScan-$VERSION.ipa" Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: FormScan-candidate-IPA
+          name: FormScan-candidate-IPA-iOS${{ matrix.ios }}
           path: candidate/*.ipa
           retention-days: 5
-      - name: Start installed iPhone simulator with iOS 26
+      - name: Start installed iPhone simulator
         timeout-minutes: 10
         run: |
           set -o pipefail
@@ -98,7 +110,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: FormScan-build-and-verification
+          name: FormScan-build-and-verification-iOS${{ matrix.ios }}
           path: |
             release/
             Screenshots/
@@ -108,13 +120,27 @@ jobs:
             simulator-start.log
             Assets.xcassets/AppIcon.appiconset/*.png
           retention-days: 14
+  publish:
+    needs: ios
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FormScan-build-and-verification-iOS27
+          path: verified
+      - name: Prepare verified release
+        run: |
+          mv verified/release release
+          VERSION=$(python3 -c "import json; print(json.load(open('release/source.json'))['apps'][0]['version'])")
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Publish verified release and matching SideStore sources
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$APP_VERSION"
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 · Liquid Glass nativo · campos sincronizados con el PDF · IA local. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 y 27 · Liquid Glass nativo · análisis automático · multi IA local · casillas vectoriales · campos sincronizados con el PDF. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
           mkdir release-check
           gh release download "$TAG" --pattern "FormScan-$APP_VERSION.ipa" --dir release-check
           python3 Scripts/release_source.py "release-check/FormScan-$APP_VERSION.ipa" --output release-check

@@ -5,6 +5,8 @@ settings:
   base:
     SWIFT_VERSION: '5.0'
     GENERATE_INFOPLIST_FILE: YES
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27*]': '$(inherited) IOS27_SDK'
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27*]': '$(inherited) IOS27_SDK'
 packages:
   ONNXRuntime:
     url: https://github.com/microsoft/onnxruntime-swift-package-manager
@@ -23,8 +25,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.polaca1.formscan
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Config/Info.plist
-        MARKETING_VERSION: '2.1.0'
-        CURRENT_PROJECT_VERSION: '23'
+        MARKETING_VERSION: '2.2.0'
+        CURRENT_PROJECT_VERSION: '24'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: '1,2'
   FormScanTests:

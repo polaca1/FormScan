@@ -199,7 +199,7 @@ enum ExampleDocument {
                 page.addAnnotation(annotation)
             }
             let checkbox = PDFAnnotation(bounds: CGRect(x: 48, y: 842 - 510 - 22, width: 22, height: 22), forType: .widget, withProperties: nil)
-            checkbox.widgetFieldType = .button; checkbox.fieldName = "reviewed"
+            checkbox.widgetFieldType = .button; checkbox.widgetControlType = .checkBoxControl; checkbox.fieldName = "reviewed"
             checkbox.buttonWidgetState = .offState
             checkbox.color = .clear
             page.addAnnotation(checkbox)

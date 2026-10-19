@@ -63,3 +63,6 @@ Solo después de compilar y superar las pruebas, `main` publica `v<CFBundleShort
 ## Recursos
 
 Modelo [nutrientdocs/form-field-v1-nano](https://huggingface.co/nutrientdocs/form-field-v1-nano), licencia Apache 2.0. Inferencia con ONNX Runtime 1.20.0 (MIT). El modelo detecta texto, opciones y firmas; los campos propuestos deben revisarse antes de compartir. Los iconos claro y oscuro originales se conservan en `Artwork/`; el catálogo recibe imágenes opacas de 1024 px. iOS aplica su apariencia tintada del sistema.
+
+
+Guía aplicada para [iOS 27](Docs/iOS27.md), con compatibilidad con iOS 26. El análisis comienza al importar o escanear; Multi IA contrasta los modelos instalados y conserva las ediciones del usuario.

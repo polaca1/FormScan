@@ -30,6 +30,7 @@ struct SavedDocument: Identifiable, Codable {
     var modified = Date()
     var pageCount: Int
     var fields: [FormEntry]
+    var analyzed: Bool? = nil
 }
 
 @MainActor
@@ -80,6 +81,7 @@ final class DocumentLibrary: ObservableObject {
     func delete(_ item: SavedDocument) {
         try? FileManager.default.removeItem(at: pdfURL(item.id))
         try? FileManager.default.removeItem(at: metadataURL(item.id))
+        sessions[item.id]?.cancelAnalysis()
         sessions[item.id] = nil; thumbnails[item.id] = nil
         documents.removeAll { $0.id == item.id }
     }
@@ -104,6 +106,18 @@ final class DocumentSession: ObservableObject {
     @Published var error: String?
     private let save: (SavedDocument, PDFDocument) throws -> Void
     private var pendingSave: Task<Void, Never>?
+    private var analysisTask: Task<Void, Never>?
+    func startAnalysis(using models: ModelStore, automatic: Bool = false) {
+        guard !busy, analysisTask == nil, !automatic || item.analyzed != true else { return }
+        let jobs = models.analysisJobs, parallelism = models.parallelism
+        analysisTask = Task { [weak self] in
+            guard let self else { return }
+            await self.detect(jobs: jobs, parallelism: parallelism)
+            self.analysisTask = nil
+        }
+    }
+    func cancelAnalysis() { analysisTask?.cancel() }
+
 
     init(item: SavedDocument, document: PDFDocument, save: @escaping (SavedDocument, PDFDocument) throws -> Void) {
         self.item = item; self.document = document; self.save = save
@@ -178,45 +192,78 @@ final class DocumentSession: ObservableObject {
         return url
     }
     func detect(model: AIModel = .nano, modelURL: URL? = nil) async {
-        guard !busy else { return }
+        guard let url = modelURL ?? Bundle.main.url(forResource: "model", withExtension: "onnx") else { return }
+        await detect(jobs: [InferenceJob(model: model, url: url)], parallelism: 1)
+    }
+    func detect(jobs: [InferenceJob], parallelism: Int) async {
+        guard !busy, !jobs.isEmpty else { return }
         busy = true
         defer { busy = false; progress = "" }
-        var found: [FormEntry] = []
+        var failures: [String] = []
+        var successful = false
         do {
             for index in 0..<document.pageCount {
                 try Task.checkCancellation()
-                progress = "Analizando página \(index + 1) de \(document.pageCount)…"
                 guard let page = document.page(at: index) else { continue }
-                let bounds = page.bounds(for: .cropBox)
+                let bounds = page.bounds(for: .cropBox), rotation = page.rotation
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
-                let (detections, lines) = try await Task.detached(priority: .userInitiated) {
-                    let detections = try LocalFieldAI.detect(image, model: model, modelURL: modelURL)
-                    // A text-recognition failure must not discard valid fields.
-                    return (detections, (try? FieldLabels.recognize(image)) ?? [])
-                }.value
-                try Task.checkCancellation()
-                for detection in detections {
-                    let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: CGSize(width: image.cgImage!.width, height: image.cgImage!.height), bounds: bounds, rotation: page.rotation)
-                    let label = FieldLabels.label(for: detection.rect, checkbox: detection.category == 1, lines: lines)
-                    let overlaps: (FormEntry) -> Bool = { $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5 }
-                    if let existing = item.fields.firstIndex(where: overlaps), let label,
-                       item.fields[existing].checkbox == (detection.category == 1),
-                       ["Casilla", "Opción sin etiqueta", "Campo de texto", "Firma"].contains(item.fields[existing].label) {
-                        item.fields[existing].label = label
-                    }
-                    let exists = (item.fields + found).contains(where: overlaps)
-                    if !exists, !rect.isEmpty {
-                        let fallback = detection.category == 1 ? "Opción sin etiqueta" : detection.category == 2 ? "Firma" : "Campo de texto"
-                        found.append(FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: detection.category == 1))
+                let imageSize = CGSize(width: image.cgImage!.width, height: image.cgImage!.height)
+                progress = "Leyendo página \(index + 1) de \(document.pageCount)…"
+                let lines = await Task.detached(priority: .userInitiated) { (try? FieldLabels.recognize(image)) ?? [] }.value
+                var results: [AIModel: [DetectedField]] = [:]
+                // Only fields created during this analysis can be refined or removed.
+                // Existing fields and anything the user edits stay authoritative.
+                var provisional: [UUID: FormEntry] = [:]
+                await FieldEnsemble.run(image: image, jobs: jobs, parallelism: parallelism) { result, completed in
+                    guard !Task.isCancelled else { return }
+                    progress = "Página \(index + 1) · \(completed)/\(jobs.count) modelos"
+                    switch result.fields {
+                    case .failure(let message): failures.append("\(result.model.name): \(message)")
+                    case .success(let fields):
+                        successful = true
+                        results[result.model] = fields
+                        let fused = FieldEnsemble.fuse(results)
+                        var retained = Set<UUID>()
+                        for detection in fused {
+                            let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
+                            guard !rect.isEmpty else { continue }
+                            let checkbox = detection.category == 1
+                            let label = FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
+                            if let existing = item.fields.firstIndex(where: {
+                                $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
+                            }) {
+                                let field = item.fields[existing]
+                                retained.insert(field.id)
+                                if provisional[field.id] == field {
+                                    item.fields[existing].rect = rect
+                                    item.fields[existing].checkbox = checkbox
+                                    if let label { item.fields[existing].label = label }
+                                    provisional[field.id] = item.fields[existing]
+                                } else if field.checkbox == checkbox, let label,
+                                          ["Casilla", "Opción sin etiqueta", "Campo de texto", "Firma"].contains(field.label) {
+                                    item.fields[existing].label = label
+                                }
+                            } else {
+                                let fallback = checkbox ? "Opción sin etiqueta" : detection.category == 2 ? "Firma" : "Campo de texto"
+                                let field = FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: checkbox)
+                                item.fields.append(field); provisional[field.id] = field; retained.insert(field.id)
+                            }
+                        }
+                        item.fields.removeAll { field in
+                            !retained.contains(field.id) && provisional[field.id] == field
+                        }
+                        item.fields.sort { $0.page == $1.page ? $0.rect.midY > $1.rect.midY : $0.page < $1.page }
+                        changed()
                     }
                 }
             }
-            found.sort { $0.page == $1.page ? $0.rect.midY > $1.rect.midY : $0.page < $1.page }
-            item.fields.append(contentsOf: found); changed()
-        } catch is CancellationError {
-            return
-        } catch { self.error = "No se pudo analizar: \(error.localizedDescription)" }
+            try Task.checkCancellation()
+            if successful { item.analyzed = true; changed(); flush() }
+            if !failures.isEmpty { error = "\(successful ? "Análisis parcial. " : "No se pudo analizar. ")\(failures.joined(separator: "\n"))" }
+        } catch is CancellationError { return }
+        catch { self.error = error.localizedDescription }
     }
+
 }
 
 extension CGRect { var area: CGFloat { isNull ? 0 : width * height } }
@@ -231,16 +278,39 @@ enum PDFFormWriter {
         for field in fields {
             guard let page = document.page(at: field.page) else { continue }
             if let name = field.widgetName, let widget = page.annotations.first(where: { $0.fieldName == name }) {
-                if field.checkbox { widget.buttonWidgetState = field.checked ? .onState : .offState }
-                else { widget.widgetStringValue = field.text }
+                if field.checkbox {
+                    widget.widgetControlType = .checkBoxControl
+                    widget.buttonWidgetState = field.checked ? .onState : .offState
+                    // PDFKit's generated button appearance varies by PDF producer.
+                    // Preserve its editable state but render our portable vector appearance.
+                    widget.shouldDisplay = false; widget.shouldPrint = false
+                } else { widget.widgetStringValue = field.text; continue }
+            }
+            if field.checkbox {
+                let outline = PDFAnnotation(bounds: field.rect, forType: .square, withProperties: nil)
+                outline.userName = prefix + field.id.uuidString + ":outline"
+                outline.color = .black; outline.interiorColor = .clear
+                let edge = PDFBorder(); edge.lineWidth = 0.8; outline.border = edge
+                page.addAnnotation(outline)
+                if field.checked {
+                    let mark = PDFAnnotation(bounds: field.rect, forType: .ink, withProperties: nil)
+                    mark.userName = prefix + field.id.uuidString; mark.color = .black; mark.contents = "✓"
+                    let border = PDFBorder(); border.lineWidth = max(1.5, min(field.rect.width, field.rect.height) * 0.10); mark.border = border
+                    let path = UIBezierPath()
+                    let w = field.rect.width, h = field.rect.height
+                    path.move(to: CGPoint(x: w * 0.18, y: h * 0.5))
+                    path.addLine(to: CGPoint(x: w * 0.42, y: h * 0.25))
+                    path.addLine(to: CGPoint(x: w * 0.84, y: h * 0.82))
+                    mark.add(path); page.addAnnotation(mark)
+                }
                 continue
             }
             guard field.completed else { continue }
             let annotation = PDFAnnotation(bounds: field.rect, forType: .freeText, withProperties: nil)
             annotation.userName = prefix + field.id.uuidString
-            annotation.contents = field.checkbox ? "✓" : field.text
+            annotation.contents = field.text
             // PDF standard fonts survive serialization without SF UI font substitution.
-            annotation.font = UIFont(name: "Helvetica", size: min(field.checkbox ? 22 : 15, max(8, field.rect.height * 0.65)))
+            annotation.font = UIFont(name: "Helvetica", size: min(15, max(8, field.rect.height * 0.65)))
             annotation.fontColor = .black; annotation.color = .clear
             let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
             page.addAnnotation(annotation)

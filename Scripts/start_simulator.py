@@ -11,10 +11,11 @@ def run(arguments, timeout, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
+major = os.environ.get("SIMULATOR_OS_MAJOR", "26")
 devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "-j"], 90, True))["devices"]
-choices = [(runtime, device) for runtime, group in devices.items() if "iOS-26" in runtime
+choices = [(runtime, device) for runtime, group in devices.items() if "iOS-" + major in runtime
            for device in group if device["name"].startswith("iPhone")]
-assert choices, "No installed iPhone with an iOS 26 simulator runtime"
+assert choices, "No installed iPhone with the requested iOS simulator runtime"
 latest = max((runtime for runtime, _ in choices), key=lambda value: tuple(int(part) for part in re.findall(r"\d+", value)))
 phones = [device for runtime, device in choices if runtime == latest]
 phones.sort(key=lambda device: (device["state"] != "Booted", device["name"] != "iPhone 14 Pro",

@@ -7,7 +7,6 @@ private struct SharedPDF: Identifiable { let id = UUID(); let url: URL }
 struct EditorView: View {
     @ObservedObject var session: DocumentSession
     @EnvironmentObject private var models: ModelStore
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -18,13 +17,12 @@ struct EditorView: View {
     @State private var share: SharedPDF?
     @State private var renaming = false
     @State private var title = ""
-    @State private var analysis: Task<Void, Never>?
-    @State private var analyzed = false
+    @State private var wideLayout = false
     @FocusState private var focusedField: UUID?
 
     var body: some View {
         Group {
-            if sizeClass == .regular {
+            if wideLayout {
                 HStack(spacing: 0) {
                     preview
                     Divider()
@@ -46,12 +44,13 @@ struct EditorView: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: mode)
             }
         }
+        .onGeometryChange(for: Bool.self) { $0.size.width >= 820 } action: { wideLayout = $0 }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(session.item.title)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 10) {
-                if sizeClass != .regular {
+                if !wideLayout {
                     Picker("Vista del documento", selection: $mode) {
                         ForEach(EditorMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
@@ -73,7 +72,7 @@ struct EditorView: View {
                     ProgressView()
                     Text(session.progress).font(.subheadline)
                     Spacer()
-                    Button("Cancelar") { analysis?.cancel() }
+                    Button("Cancelar") { session.cancelAnalysis() }
                 }.padding().background(.bar)
             } else if placing != nil {
                 HStack {
@@ -93,7 +92,7 @@ struct EditorView: View {
                 Button("Listo") { focusedField = nil }
                     .accessibilityIdentifier("finishFormEditing")
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: sharePlacement) {
                 Button("Compartir", systemImage: "square.and.arrow.up") {
                     do { share = SharedPDF(url: try session.export()) }
                     catch { session.error = error.localizedDescription }
@@ -111,14 +110,12 @@ struct EditorView: View {
             }
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Detectar", systemImage: "sparkles") {
-                    analysis = Task {
-                        let model = models.active
-                        await session.detect(model: model, modelURL: models.url(for: model))
-                        if !Task.isCancelled { analyzed = true; mode = .form }
-                    }
+                    session.startAnalysis(using: models)
+                    mode = .form
                 }
                 .labelStyle(.titleAndIcon).accessibilityLabel("Detectar campos con IA")
                 .disabled(session.busy).accessibilityIdentifier("detectFields")
+                .accessibilityValue(session.busy ? "Analizando" : session.item.analyzed == true ? "Análisis completado" : "Pendiente")
                 Spacer()
                 Menu {
                     Button("Campo de texto", systemImage: "text.cursor") { add(checkbox: false) }
@@ -144,9 +141,15 @@ struct EditorView: View {
         } message: { Text(session.error ?? "") }
         .onChange(of: scenePhase) { _, phase in if phase != .active { session.flush() } }
         .onChange(of: mode) { _, _ in focusedField = nil }
-        .onDisappear { analysis?.cancel(); session.flush() }
+        .onDisappear { session.flush() }
     }
 
+    private var sharePlacement: ToolbarItemPlacement {
+        #if IOS27_SDK
+        if #available(iOS 27.0, *) { return .topBarPinnedTrailing }
+        #endif
+        return .topBarTrailing
+    }
     private var preview: some View {
         PDFCanvas(document: session.document, fields: session.item.fields, revision: session.revision,
                   page: $page, placing: placing) { field in selection = field } place: { point, index in
@@ -164,9 +167,9 @@ struct EditorView: View {
         Group {
             if session.item.fields.isEmpty {
                 ContentUnavailableView {
-                    Label(analyzed ? "Sin campos detectados" : "Completa tu documento", systemImage: "rectangle.and.text.magnifyingglass")
+                    Label(session.item.analyzed == true ? "Sin campos detectados" : "Completa tu documento", systemImage: "rectangle.and.text.magnifyingglass")
                 } description: {
-                    Text(analyzed ? "Puede que esta página no sea un formulario. Puedes añadir texto y casillas manualmente." : "Detecta los campos con IA local o añade un campo donde lo necesites.")
+                    Text(session.item.analyzed == true ? "Puede que esta página no sea un formulario. Puedes añadir texto y casillas manualmente." : "Detecta los campos con IA local o añade un campo donde lo necesites.")
                 } actions: {
                     Button("Añadir un campo") { add(checkbox: false) }.buttonStyle(.bordered)
                 }

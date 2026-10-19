@@ -22,6 +22,16 @@ struct ModelSettingsView: View {
             deviceSection
             selectionSection
             Section {
+                Toggle("Contrastar con varios modelos", isOn: $store.multiAI).accessibilityIdentifier("multiAI")
+                LabeledContent("Disponibles", value: "\(store.installed.count) de 3")
+                if store.installed.count < 3 {
+                    Button("Instalar los tres modelos", systemImage: "arrow.down.circle") { store.installEnsemble() }
+                        .disabled(store.downloading != nil || store.benchmarking)
+                }
+            } header: { Text("Multi IA") } footer: {
+                Text("Verás los primeros campos al terminar un modelo y se contrastarán con los siguientes. Nano FP32 y FP16 son variantes de la misma familia; su acuerdo no cuenta como dos opiniones independientes. Funciona sin conexión con los modelos instalados.")
+            }
+            Section {
                 ForEach(AIModel.allCases) { model in ModelOptionRow(store: store, model: model) }
             } header: { Text("Modelos disponibles") } footer: {
                 Text("Solo necesitas internet para instalar modelos. Tus documentos se analizan siempre en el dispositivo. Nano compacto ahorra espacio; un modelo más grande no es siempre mejor para todas las páginas.")
@@ -44,9 +54,9 @@ struct ModelSettingsView: View {
                     Text(deviceDescription).font(.subheadline).foregroundStyle(.secondary)
                 }
             }.padding(.vertical, 8)
-            LabeledContent("Recomendado", value: AIModel.nano.name)
+            LabeledContent("Recomendado", value: store.recommended.name)
         } footer: {
-            Text("Nano equilibrado es la recomendación para uso diario, incluido el iPhone 14 Pro con A16. Puedes comparar los tiempos reales de este dispositivo más abajo.")
+            Text(store.recommendationReason)
         }
     }
 
