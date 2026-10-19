@@ -22,7 +22,7 @@ def generate(ipa, output):
         "downloadURL": f"{base}/FormScan-{version}.ipa",
         "size": pathlib.Path(ipa).stat().st_size,
         "minOSVersion": info["MinimumOSVersion"],
-        "localizedDescription": "Inicio, Documentos y Ajustes separados según las guías de Apple. Importación con copia local, editor estable al cambiar de modo y etiquetas de casillas tomadas del documento. Liquid Glass nativo, IA local y PDF sincronizado.",
+        "localizedDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF.",
     }
     app = {
         "name": "FormScan", "bundleIdentifier": info["CFBundleIdentifier"],
@@ -38,7 +38,7 @@ def generate(ipa, output):
     for filename, identifier in [("source.json", "com.polaca1.formscan.source"), ("sidestore-v2.json", "com.polaca1.formscan.source.v2")]:
         source = {"name": "FormScan", "identifier": identifier,
                   "subtitle": "Tus formularios, resueltos.",
-                  "description": "Escáner y formularios con IA local. Diseñado para iOS 26.",
+                  "description": "Escáner y formularios con IA local. Diseñado para iOS 26 y 27.",
                   "iconURL": app["iconURL"], "apps": [app]}
         (output / filename).write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n")
     assert app["version"] == app["versions"][0]["version"] == info["CFBundleShortVersionString"]

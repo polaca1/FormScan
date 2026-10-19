@@ -128,7 +128,7 @@ final class ModelStore: ObservableObject {
         if !installed.contains(selected) { selected = .nano }
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") { selected = .nano; automatic = false; multiAI = false }
         refreshConditions()
-        for name in [ProcessInfo.powerStateDidChangeNotification, ProcessInfo.thermalStateDidChangeNotification] {
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange, ProcessInfo.thermalStateDidChangeNotification] {
             observations.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refreshConditions() }
             })

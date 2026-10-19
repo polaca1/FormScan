@@ -216,7 +216,7 @@ final class DocumentSession: ObservableObject {
                 var provisional: [UUID: FormEntry] = [:]
                 await FieldEnsemble.run(image: image, jobs: jobs, parallelism: parallelism) { result, completed in
                     guard !Task.isCancelled else { return }
-                    progress = "Página \(index + 1) · \(completed)/\(jobs.count) modelos"
+                    progress = "Página \(index + 1) · \(result.model.name) · \(completed)/\(jobs.count)"
                     switch result.fields {
                     case .failure(let message): failures.append("\(result.model.name): \(message)")
                     case .success(let fields):
