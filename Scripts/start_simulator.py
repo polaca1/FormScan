@@ -15,6 +15,7 @@ def run(arguments, timeout, capture=False):
 developer = run(["xcode-select", "-p"], 15, True).strip()
 run(["open", "-a", str(pathlib.Path(developer) / "Applications/Simulator.app")], 20)
 devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "-j"], 60, True))["devices"]
+run(["xcrun", "simctl", "shutdown", "all"], 45)
 runtimes = [runtime for runtime in devices if "iOS-26" in runtime]
 assert runtimes, "No iOS 26 simulator runtime installed"
 runtime = max(runtimes, key=lambda value: tuple(int(part) for part in re.findall(r"\d+", value)))
