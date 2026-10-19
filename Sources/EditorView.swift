@@ -172,10 +172,6 @@ struct EditorView: View {
                 }
             } else {
                 Form {
-                    Section {
-                        Label("Cada cambio se refleja en el documento.", systemImage: "checkmark.circle.fill")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
                     ForEach(0..<session.document.pageCount, id: \.self) { index in
                         let fields = session.item.fields.filter { $0.page == index }
                         if !fields.isEmpty {

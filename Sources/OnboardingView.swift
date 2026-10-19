@@ -4,6 +4,7 @@ import PDFKit
 struct OnboardingView: View {
     let finish: (Bool) -> Void
     @State private var step = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let example = ExampleDocument.make()
 
     var body: some View {
@@ -29,10 +30,6 @@ struct OnboardingView: View {
                             .font(.body).foregroundStyle(.secondary)
                         ExamplePreview(document: example)
                             .frame(height: 300).clipShape(RoundedRectangle(cornerRadius: 16))
-                            .overlay(alignment: .bottom) {
-                                Label("Un ejemplo listo para probar", systemImage: "hand.tap")
-                                    .font(.caption).padding(12).glassEffect().padding(12)
-                            }
                         tip("slider.horizontal.3", "Tú tienes el control", "Revisa los campos, ajusta su tamaño o colócalos tocando el documento.")
                     } else {
                         Image(systemName: "checkmark.shield").font(.system(size: 64, weight: .light)).foregroundStyle(.blue)
@@ -52,13 +49,13 @@ struct OnboardingView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Ahora no") { finish(false) }.accessibilityIdentifier("skipTutorial") }
                 if step > 0 {
-                    ToolbarItem(placement: .topBarLeading) { Button("Atrás", systemImage: "chevron.left") { withAnimation { step -= 1 } } }
+                    ToolbarItem(placement: .topBarLeading) { Button("Atrás", systemImage: "chevron.left") { withAnimation(reduceMotion ? nil : .default) { step -= 1 } } }
                 }
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 12) {
                     Button {
-                        if step < 2 { withAnimation { step += 1 } }
+                        if step < 2 { withAnimation(reduceMotion ? nil : .default) { step += 1 } }
                         else { finish(true) }
                     } label: {
                         Text(step < 2 ? "Continuar" : "Probar con un documento de ejemplo")
