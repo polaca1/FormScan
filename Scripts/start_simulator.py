@@ -22,9 +22,8 @@ runtime = max(runtimes, key=lambda value: tuple(int(part) for part in re.findall
 identifier = run(["xcrun", "simctl", "create", "FormScan iPhone 14 Pro",
                   "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro", runtime], 30, True).strip()
 print("Testing iPhone 14 Pro with", runtime, identifier, flush=True)
-run(["xcrun", "simctl", "boot", identifier], 45)
 try:
-    run(["xcrun", "simctl", "bootstatus", identifier, "-b"], 180)
+    run(["xcrun", "simctl", "bootstatus", identifier, "-b"], 360)
 except subprocess.TimeoutExpired:
     run(["xcrun", "simctl", "list", "devices", "available"], 30)
     raise

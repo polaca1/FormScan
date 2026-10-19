@@ -197,9 +197,15 @@ final class DocumentSession: ObservableObject {
                 try Task.checkCancellation()
                 for detection in detections {
                     let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: CGSize(width: image.cgImage!.width, height: image.cgImage!.height), bounds: bounds, rotation: page.rotation)
-                    let exists = (item.fields + found).contains { $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5 }
+                    let label = FieldLabels.label(for: detection.rect, checkbox: detection.category == 1, lines: lines)
+                    let overlaps: (FormEntry) -> Bool = { $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5 }
+                    if let existing = item.fields.firstIndex(where: overlaps), let label,
+                       item.fields[existing].checkbox == (detection.category == 1),
+                       ["Casilla", "Opción sin etiqueta", "Campo de texto", "Firma"].contains(item.fields[existing].label) {
+                        item.fields[existing].label = label
+                    }
+                    let exists = (item.fields + found).contains(where: overlaps)
                     if !exists, !rect.isEmpty {
-                        let label = FieldLabels.label(for: detection.rect, checkbox: detection.category == 1, lines: lines)
                         let fallback = detection.category == 1 ? "Opción sin etiqueta" : detection.category == 2 ? "Firma" : "Campo de texto"
                         found.append(FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: detection.category == 1))
                     }

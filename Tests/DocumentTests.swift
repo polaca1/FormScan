@@ -82,11 +82,18 @@ final class DocumentTests: XCTestCase {
         await session.detect()
         XCTAssertNil(session.error)
         var field = try XCTUnwrap(session.item.fields.first)
-        field.text = "Conservar este valor"; session.update(field)
+        field.text = "Conservar este valor"; field.label = "Campo de texto"; session.update(field)
         let count = session.item.fields.count
         await session.detect()
         XCTAssertEqual(session.item.fields.count, count)
         XCTAssertEqual(session.item.fields.first { $0.id == field.id }?.text, "Conservar este valor")
+        XCTAssertNotEqual(session.item.fields.first { $0.id == field.id }?.label, "Campo de texto")
+    }
+
+    func testAppBundleExposesDocumentsToFiles() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "UIFileSharingEnabled") as? Bool, true)
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "LSSupportsOpeningDocumentsInPlace") as? Bool, true)
+        XCTAssertNotNil(Bundle.main.object(forInfoDictionaryKey: "UILaunchScreen"))
     }
 
     func testCheckboxUsesPrintedLabelRatherThanWidgetIdentifier() throws {

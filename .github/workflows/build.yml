@@ -53,7 +53,7 @@ jobs:
           path: candidate/*.ipa
           retention-days: 5
       - name: Start iPhone 14 Pro simulator with iOS 26
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: python3 -u Scripts/start_simulator.py
       - name: Test PDF editing, offline inference and user interface
         timeout-minutes: 12
