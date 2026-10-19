@@ -49,10 +49,10 @@ jobs:
           identifier = subprocess.check_output(['xcrun', 'simctl', 'create', 'FormScan iPhone 14 Pro', 'com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro', runtime], text=True).strip()
           chosen = {'name': 'iPhone 14 Pro', 'udid': identifier}
           subprocess.run(['xcrun', 'simctl', 'boot', identifier], check=True)
+          subprocess.run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'], check=True)
           print(chosen['name'], chosen['udid'])
           with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
           PY
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
