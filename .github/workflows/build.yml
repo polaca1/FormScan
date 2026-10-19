@@ -36,6 +36,7 @@ jobs:
         timeout-minutes: 3
         run: swift Scripts/GenerateIcon.swift
       - name: Start iPhone 14 Pro simulator with iOS 26
+        timeout-minutes: 5
         run: |
           xcrun simctl list devices available -j > devices.json
           python3 - <<'PY'
@@ -51,6 +52,7 @@ jobs:
           print(chosen['name'], chosen['udid'])
           with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
           PY
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
@@ -58,9 +60,10 @@ jobs:
           set -o pipefail
           xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
       - name: Test PDF editing, offline inference and user interface
+        timeout-minutes: 12
         run: |
           set -o pipefail
-          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
+          xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test | tee simulator-tests.log
       - name: Export UI screenshots
         if: always()
         run: |
@@ -105,6 +108,7 @@ jobs:
             TestResults.xcresult/
             *-build.log
             simulator-tests.log
+            Assets.xcassets/AppIcon.appiconset/*.png
           retention-days: 14
       - name: Publish verified release and matching SideStore sources
         if: github.ref == 'refs/heads/main'
