@@ -52,9 +52,11 @@ jobs:
           name: FormScan-candidate-IPA
           path: candidate/*.ipa
           retention-days: 5
-      - name: Start iPhone 14 Pro simulator with iOS 26
+      - name: Start installed iPhone simulator with iOS 26
         timeout-minutes: 10
-        run: python3 -u Scripts/start_simulator.py
+        run: |
+          set -o pipefail
+          python3 -u Scripts/start_simulator.py | tee simulator-start.log
       - name: Test PDF editing, offline inference and user interface
         timeout-minutes: 12
         run: |
@@ -103,6 +105,7 @@ jobs:
             TestResults.xcresult/
             *-build.log
             simulator-tests.log
+            simulator-start.log
             Assets.xcassets/AppIcon.appiconset/*.png
           retention-days: 14
       - name: Publish verified release and matching SideStore sources

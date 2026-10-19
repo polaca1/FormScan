@@ -1,7 +1,6 @@
-"""Boot the requested iPhone with bounded, visible CoreSimulator diagnostics."""
+"""Use an installed iPhone simulator with bounded, visible boot diagnostics."""
 import json
 import os
-import pathlib
 import re
 import subprocess
 
@@ -12,16 +11,17 @@ def run(arguments, timeout, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
-developer = run(["xcode-select", "-p"], 15, True).strip()
-run(["open", "-a", str(pathlib.Path(developer) / "Applications/Simulator.app")], 20)
-devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "-j"], 60, True))["devices"]
-run(["xcrun", "simctl", "shutdown", "all"], 45)
-runtimes = [runtime for runtime in devices if "iOS-26" in runtime]
-assert runtimes, "No iOS 26 simulator runtime installed"
-runtime = max(runtimes, key=lambda value: tuple(int(part) for part in re.findall(r"\d+", value)))
-identifier = run(["xcrun", "simctl", "create", "FormScan iPhone 14 Pro",
-                  "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro", runtime], 30, True).strip()
-print("Testing iPhone 14 Pro with", runtime, identifier, flush=True)
+devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "-j"], 90, True))["devices"]
+choices = [(runtime, device) for runtime, group in devices.items() if "iOS-26" in runtime
+           for device in group if device["name"].startswith("iPhone")]
+assert choices, "No installed iPhone with an iOS 26 simulator runtime"
+latest = max((runtime for runtime, _ in choices), key=lambda value: tuple(int(part) for part in re.findall(r"\d+", value)))
+phones = [device for runtime, device in choices if runtime == latest]
+phones.sort(key=lambda device: (device["state"] != "Booted", device["name"] != "iPhone 14 Pro",
+                                device["name"] != "iPhone 17 Pro", device["name"]))
+chosen = phones[0]
+identifier = chosen["udid"]
+print("Testing installed simulator:", chosen["name"], latest, identifier, flush=True)
 try:
     run(["xcrun", "simctl", "bootstatus", identifier, "-b"], 360)
 except subprocess.TimeoutExpired:
@@ -29,3 +29,4 @@ except subprocess.TimeoutExpired:
     raise
 with open(os.environ["GITHUB_ENV"], "a") as output:
     output.write("SIMULATOR_ID=" + identifier + "\n")
+    output.write("SIMULATOR_NAME=" + chosen["name"] + "\n")
