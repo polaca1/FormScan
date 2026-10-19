@@ -11,13 +11,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ios:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.0.1'
+          xcode-version: '26.6'
       - name: Verify Xcode and SDK
         run: |
           xcodebuild -version
@@ -35,30 +35,26 @@ jobs:
       - name: Generate adaptive app icons
         timeout-minutes: 3
         run: swift Scripts/GenerateIcon.swift
-      - name: Start iPhone 14 Pro simulator with iOS 26
-        timeout-minutes: 5
-        run: |
-          xcrun simctl list devices available -j > devices.json
-          python3 - <<'PY'
-          import json, os, subprocess
-          devices = json.load(open('devices.json'))['devices']
-          choices = [(runtime, device) for runtime, group in devices.items() if 'iOS-26' in runtime for device in group if device['name'].startswith('iPhone')]
-          choices.sort(key=lambda item: ('iOS-26-0' not in item[0], 'iPhone 17 Pro' not in item[1]['name'], item[1]['name']))
-          assert choices, 'No iOS 26 simulator installed'
-          runtime = choices[0][0]
-          identifier = subprocess.check_output(['xcrun', 'simctl', 'create', 'FormScan iPhone 14 Pro', 'com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro', runtime], text=True).strip()
-          chosen = {'name': 'iPhone 14 Pro', 'udid': identifier}
-          subprocess.run(['xcrun', 'simctl', 'boot', identifier], check=True)
-          subprocess.run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'], check=True)
-          print(chosen['name'], chosen['udid'])
-          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('SIMULATOR_ID=' + chosen['udid'] + '\n')
-          PY
       - name: Generate project
         run: xcodegen generate
       - name: Build iPhone application
         run: |
           set -o pipefail
           xcodebuild -project FormScan.xcodeproj -scheme FormScan -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
+      - name: Prepare candidate IPA
+        run: |
+          mkdir -p Payload candidate
+          cp -R build/Build/Products/Release-iphoneos/FormScan.app Payload/
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Payload/FormScan.app/Info.plist)
+          zip -qr "candidate/FormScan-$VERSION.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FormScan-candidate-IPA
+          path: candidate/*.ipa
+          retention-days: 5
+      - name: Start iPhone 14 Pro simulator with iOS 26
+        timeout-minutes: 6
+        run: python3 -u Scripts/start_simulator.py
       - name: Test PDF editing, offline inference and user interface
         timeout-minutes: 12
         run: |
@@ -73,12 +69,11 @@ jobs:
           fi
       - name: Package and verify IPA and sources
         run: |
-          mkdir -p Payload release
-          cp -R build/Build/Products/Release-iphoneos/FormScan.app Payload/
+          mkdir -p release
           /usr/libexec/PlistBuddy -c 'Print UILaunchScreen' Payload/FormScan.app/Info.plist
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Payload/FormScan.app/Info.plist)
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
-          zip -qr "release/FormScan-$VERSION.ipa" Payload
+          cp "candidate/FormScan-$VERSION.ipa" release/
           cp Assets.xcassets/AppIcon.appiconset/AppIcon.png release/AppIcon.png
           cp ModelAssets/ffdetr-mobile-int8.onnx release/
           cp Docs/Models.md release/Models.md
