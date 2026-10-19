@@ -1,0 +1,126 @@
+name: Publish an already verified IPA
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Run containing the verified SDK 27 candidate
+        required: true
+      commit_sha:
+        description: Exact source commit of the candidate and its tests
+        required: true
+      version:
+        description: Expected version inside the IPA
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: ${{ inputs.run_id }}
+      SOURCE_SHA: ${{ inputs.commit_sha }}
+      EXPECTED_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the source and completed runtime verification
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs" > source-jobs.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open('source-run.json'))
+          assert run['head_sha'] == os.environ['SOURCE_SHA']
+          jobs = json.load(open('source-jobs.json'))['jobs']
+          job = next(job for job in jobs if 'xcode-27' in job['name'])
+          for name in ['Verify actual Files import and a checked box first', 'Test PDF editing and three real offline models']:
+              assert any(step['name'] == name and step['conclusion'] == 'success' for step in job['steps']), name
+          print('Verified source commit, real Files import, checked PDF and offline model tests')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: FormScan-candidate-IPA-iOS27
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: FormScan-build-and-verification-iOS27
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Prepare the exact IPA, artwork and evidence
+        run: |
+          mkdir release
+          cp candidate/*.ipa release/
+          cp evidence/Assets.xcassets/AppIcon.appiconset/*.png release/
+          cp Docs/Models.md Docs/Design.md Docs/iOS27.md Sources/Resources/ThirdPartyNotices.txt release/
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib, shutil, zipfile
+          ipa = next(pathlib.Path('release').glob('*.ipa'))
+          with zipfile.ZipFile(ipa) as archive:
+              info = plistlib.loads(archive.read('Payload/FormScan.app/Info.plist'))
+          assert info['CFBundleShortVersionString'] == os.environ['EXPECTED_VERSION']
+          assert info['CFBundleIdentifier'] == 'com.polaca1.formscan'
+          assert info['MinimumOSVersion'] == '26.0'
+          assert info['DTSDKName'].startswith('iphoneos27')
+          root = pathlib.Path('evidence/Screenshots/critical')
+          for case in json.loads((root / 'manifest.json').read_text()):
+              for attachment in case['attachments']:
+                  name = attachment['suggestedHumanReadableName'].split('_')[0]
+                  if name[:2].isdigit() and attachment['exportedFileName'].endswith('.png'):
+                      shutil.copyfile(root / attachment['exportedFileName'], pathlib.Path('release') / (name + '.png'))
+          PY
+          python3 Scripts/release_source.py "release/FormScan-$EXPECTED_VERSION.ipa"
+      - name: Upload and verify the public download
+        run: |
+          TAG="v$EXPECTED_VERSION"
+          cat > release-notes.md <<'NOTES'
+          Análisis automático, recomendaciones por dispositivo, contraste progresivo con tres modelos locales instalados y casillas vectoriales. Diseño nativo para iOS 27 compatible con iOS 26, biblioteca y un icono con apariencias clara y oscura.
+
+          Verificado: pruebas de PDF y modelos locales, importación real desde Archivos, reapertura y casilla marcada en el documento. Las capturas de los dos recorridos se adjuntan. Continúan las comprobaciones completas de accesibilidad e interfaz de iOS 27.
+
+          IPA sin firmar para SideStore. La cámara física requiere un iPhone.
+          NOTES
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --target "$SOURCE_SHA" --title "FormScan $EXPECTED_VERSION" --notes-file release-notes.md
+          fi
+          mkdir existing
+          if gh release download "$TAG" --pattern "FormScan-$EXPECTED_VERSION.ipa" --dir existing; then
+            cmp "existing/FormScan-$EXPECTED_VERSION.ipa" "release/FormScan-$EXPECTED_VERSION.ipa"
+          fi
+          gh release upload "$TAG" release/* --clobber
+          gh release edit "$TAG" --draft=false --notes-file release-notes.md
+          mkdir downloaded
+          gh release download "$TAG" --pattern "FormScan-$EXPECTED_VERSION.ipa" --dir downloaded
+          cmp "downloaded/FormScan-$EXPECTED_VERSION.ipa" "release/FormScan-$EXPECTED_VERSION.ipa"
+          python3 Scripts/release_source.py "downloaded/FormScan-$EXPECTED_VERSION.ipa" --output downloaded
+          python3 - <<'PY'
+          import json
+          expected = json.load(open('release/source.json'))['apps'][0]
+          actual = json.load(open('downloaded/source.json'))['apps'][0]
+          for key in ('version', 'bundleIdentifier', 'downloadURL', 'size', 'minOSVersion'):
+              assert expected[key] == actual[key], key
+          PY
+      - name: Synchronize both sources without downgrading a newer release
+        run: |
+          git fetch origin main
+          git switch -C source-update origin/main
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          current = json.load(open('source.json'))['apps'][0]['version']
+          incoming = os.environ['EXPECTED_VERSION']
+          if tuple(map(int, current.split('.'))) > tuple(map(int, incoming.split('.'))):
+              print('A newer version is already in the source; preserving it')
+          else:
+              for name in ('source.json', 'sidestore-v2.json'):
+                  shutil.copyfile(pathlib.Path('release') / name, name)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source.json sidestore-v2.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Synchronize SideStore with verified IPA $EXPECTED_VERSION [skip ci]"
+            git push origin HEAD:main
+          fi
