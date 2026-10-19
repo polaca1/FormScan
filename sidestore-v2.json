@@ -3,7 +3,7 @@
   "identifier": "com.polaca1.formscan.source.v2",
   "subtitle": "Tus formularios, resueltos.",
   "description": "Escáner y formularios con IA local. Diseñado para iOS 26 y 27.",
-  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.1/AppIcon.png",
+  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.2/AppIcon.png",
   "apps": [
     {
       "name": "FormScan",
@@ -11,24 +11,24 @@
       "developerName": "FormScan",
       "subtitle": "Escanea. Completa. Comparte.",
       "localizedDescription": "Escanea documentos, importa PDF o imágenes y detecta campos con IA local. Lo que escribes en el formulario aparece inmediatamente en el documento. Guarda, revisa y exporta un PDF listo para compartir.",
-      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.1/AppIcon.png",
+      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.2/AppIcon.png",
       "tintColor": "007AFF",
       "versions": [
         {
-          "version": "2.2.1",
-          "buildVersion": "25",
-          "date": "2026-10-19T22:58:17Z",
-          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.1/FormScan-2.2.1.ipa",
-          "size": 14095439,
+          "version": "2.2.2",
+          "buildVersion": "26",
+          "date": "2026-10-19T23:33:08Z",
+          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.2/FormScan-2.2.2.ipa",
+          "size": 14098873,
           "minOSVersion": "26.0",
           "localizedDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF."
         }
       ],
-      "version": "2.2.1",
-      "versionDate": "2026-10-19T22:58:17Z",
+      "version": "2.2.2",
+      "versionDate": "2026-10-19T23:33:08Z",
       "versionDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF.",
-      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.1/FormScan-2.2.1.ipa",
-      "size": 14095439,
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.2/FormScan-2.2.2.ipa",
+      "size": 14098873,
       "minOSVersion": "26.0",
       "appPermissions": {
         "entitlements": [],
