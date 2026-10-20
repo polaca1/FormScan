@@ -20,6 +20,7 @@ La IPA de [Releases](https://github.com/polaca1/FormScan/releases) se distribuye
 - La app tiene tres pestañas: **Inicio** para escanear/importar, **Documentos** con biblioteca y búsqueda, y **Ajustes** con modelos y tutorial. El editor es una tarea modal a pantalla completa y vuelve a Documentos al cerrarse.
 - **Escanear** abre el escáner nativo a pantalla completa; **Importar** permite elegir PDF o imágenes de Archivos.
 - El análisis empieza automáticamente al importar o escanear, sin enviar el documento a un servidor. **Detectar** permite repetirlo y conserva los valores existentes. Los campos PDF interactivos se reconocen al importar.
+- Las tablas con bordes impresos usan el contexto de **fila y columna** en cada etiqueta. Una tabla de seis filas por tres columnas de respuesta crea 18 campos; no se extrapolan filas debajo. Se conservan texto y casillas y se respetan las celdas ya escritas. [Funcionamiento y límites de las tablas](Docs/Tables.md).
 - **Formulario** permite escribir y marcar casillas. Los cambios aparecen inmediatamente en **Documento** y se guardan automáticamente. Volver a detectar conserva los datos existentes.
 - Toca un campo en el documento o sus ajustes para cambiar etiqueta, contenido y tamaño. **Colocar en el documento** permite situarlo tocando cualquier página.
 - **Compartir** genera una copia PDF con el contenido incorporado, para que se vea en lectores que no admiten formularios interactivos. El original editable permanece en la biblioteca.
@@ -52,7 +53,7 @@ xcodegen generate
 xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-Abre el proyecto generado en Xcode para ejecutar las pruebas en un simulador iOS 26. El workflow comprueba sincronización y borrado de anotaciones, campos PDF existentes, persistencia al volver a abrir, casillas y documentos con varias páginas, coordenadas y recortes, inferencia ONNX real y conservación de valores al repetir la detección. Las pruebas UI cubren pantalla completa, modos claro/oscuro, formulario, vista de documento, hoja de compartir y orientación horizontal; sus capturas se conservan en el artefacto `FormScan-build-and-verification-iOS26` y `FormScan-build-and-verification-iOS27` junto con el resultado de XCTest.
+Abre el proyecto generado en Xcode para ejecutar las pruebas en un simulador iOS 26. El workflow comprueba sincronización y borrado de anotaciones, campos PDF existentes, persistencia al volver a abrir, casillas y documentos con varias páginas, coordenadas y recortes, inferencia ONNX real y conservación de valores al repetir la detección. También se verifican tablas de 18 celdas con OCR real, filas sin cierre, casillas pequeñas, reparación de predicciones antiguas y etiquetas con los dos encabezados. Las pruebas UI cubren pantalla completa, modos claro/oscuro, formulario, vista de documento, hoja de compartir y orientación horizontal; sus capturas se conservan en el artefacto `FormScan-build-and-verification-iOS26` y `FormScan-build-and-verification-iOS27` junto con el resultado de XCTest.
 
 La cámara requiere un iPhone/iPad físico y no puede validarse mediante el simulador. La firma e instalación de SideStore también requieren el dispositivo.
 
