@@ -128,6 +128,7 @@ struct LibraryView: View {
             if args.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
             if args.contains("-ui-testing-reopen") { section = .documents }
             #if DEBUG
+            if args.contains("-ui-testing-table"), library.documents.isEmpty { openDocument(ExampleTable.make(), title: "The environment") }
             if args.contains("-ui-testing-import") { prepareImportFixture() }
             #endif
         }

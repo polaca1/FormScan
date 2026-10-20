@@ -75,8 +75,8 @@ jobs:
           import pathlib, re
           log = pathlib.Path('evidence/simulator-tests.log').read_text()
           assert "Test Suite 'Selected tests' passed" in log
-          assert re.search(r'Executed 9 tests, with 0 failures', log)
-          assert len(re.findall(r"Test Case .* passed \(", log)) == 9
+          assert re.search(r'Executed 10 tests, with 0 failures', log)
+          assert len(re.findall(r"Test Case .* passed \(", log)) == 10
           assert not re.search(r': error: -\[FormScanUITests', log)
           print('All nine remaining UI tests also passed; Xcode stalled after the passing root suite')
           PY

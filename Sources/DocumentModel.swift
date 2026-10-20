@@ -21,6 +21,7 @@ struct FormEntry: Identifiable, Codable, Equatable {
     var checked = false
     var checkbox = false
     var widgetName: String?
+    var origin: String?
     var completed: Bool { checkbox ? checked : !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
@@ -31,6 +32,7 @@ struct SavedDocument: Identifiable, Codable {
     var pageCount: Int
     var fields: [FormEntry]
     var analyzed: Bool? = nil
+    var analysisVersion: Int? = nil
 }
 
 @MainActor
@@ -114,7 +116,7 @@ final class DocumentSession: ObservableObject {
         valid = false; pendingSave?.cancel(); analysisTask?.cancel()
     }
     func startAnalysis(using models: ModelStore, automatic: Bool = false) {
-        guard !busy, analysisTask == nil, !automatic || item.analyzed != true else { return }
+        guard !busy, analysisTask == nil, !automatic || item.analyzed != true || (item.analysisVersion ?? 0) < 2 else { return }
         let jobs = models.analysisJobs, parallelism = models.parallelism
         analysisTask = Task { [weak self] in
             guard let self else { return }
@@ -152,7 +154,7 @@ final class DocumentSession: ObservableObject {
         let index = min(max(index, 0), document.pageCount - 1)
         let bounds = document.page(at: index)!.bounds(for: .cropBox)
         let field = FormEntry(page: index, rect: CGRect(x: bounds.midX - 80, y: bounds.midY, width: checkbox ? 22 : 160, height: 26),
-                              label: checkbox ? "Casilla" : "Texto", checkbox: checkbox)
+                              label: checkbox ? "Casilla" : "Texto", checkbox: checkbox, origin: "manual")
         item.fields.append(field); changed()
         return field.id
     }
@@ -217,10 +219,25 @@ final class DocumentSession: ObservableObject {
                 try Task.checkCancellation()
                 guard let page = document.page(at: index) else { continue }
                 let bounds = page.bounds(for: .cropBox), rotation = page.rotation
+                // Analyze the original printed page, not FormScan's own answers
+                // or PDFKit's widget appearances from a previous edit.
+                let visibility = page.annotations.map { ($0, $0.shouldDisplay) }
+                page.annotations.forEach { $0.shouldDisplay = false }
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
+                for (annotation, visible) in visibility { annotation.shouldDisplay = visible }
                 let imageSize = CGSize(width: image.cgImage!.width, height: image.cgImage!.height)
                 progress = "Leyendo página \(index + 1) de \(document.pageCount)…"
                 let lines = await Task.detached(priority: .userInitiated) { (try? FieldLabels.recognize(image)) ?? [] }.value
+                let grid = await Task.detached(priority: .userInitiated) { TableGrid.detect(image, lines: lines) }.value
+                // One-time repair of untouched detections from older versions.
+                // Values, native widgets, manual fields and custom labels survive.
+                item.fields.removeAll { field in
+                    guard field.page == index, field.widgetName == nil, !field.completed,
+                          field.origin != "manual", field.origin != "table", !editedDuringAnalysis.contains(field.id) else { return false }
+                    let imageRect = PDFFormWriter.imageRect(field.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
+                    return grid.owns(imageRect) && (field.origin == "model" || grid.replacesLegacy(label: field.label))
+                }
+                let tableFields = grid.fields
                 var results: [AIModel: [DetectedField]] = [:]
                 // Only fields created during this analysis can be refined or removed.
                 // Existing fields and anything the user edits stay authoritative.
@@ -233,7 +250,8 @@ final class DocumentSession: ObservableObject {
                     case .success(let fields):
                         successful = true
                         results[result.model] = fields
-                        let fused = FieldEnsemble.fuse(results)
+                        let modelFields = FieldEnsemble.fuse(results).filter { !grid.replaces($0) }
+                        let fused = tableFields.map { DetectedField(rect: $0.rect, category: 0, confidence: 1) } + modelFields
                         var retained = Set<UUID>()
                         for detection in fused {
                             let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
@@ -241,7 +259,8 @@ final class DocumentSession: ObservableObject {
                                 $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
                             }) else { continue }
                             let checkbox = detection.category == 1
-                            let label = FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
+                            let table = tableFields.first { $0.rect == detection.rect }
+                            let label = table?.label ?? FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
                             if let existing = item.fields.firstIndex(where: {
                                 $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
                             }) {
@@ -253,25 +272,28 @@ final class DocumentSession: ObservableObject {
                                     if let label { item.fields[existing].label = label }
                                     provisional[field.id] = item.fields[existing]
                                 } else if field.checkbox == checkbox, let label,
-                                          ["Casilla", "Opción sin etiqueta", "Campo de texto", "Firma"].contains(field.label) {
+                                          (["Casilla", "Opción sin etiqueta", "Campo de texto", "Firma"].contains(field.label) || (table != nil && !field.completed && grid.replacesLegacy(label: field.label))) {
                                     item.fields[existing].label = label
                                 }
                             } else {
                                 let fallback = checkbox ? "Opción sin etiqueta" : detection.category == 2 ? "Firma" : "Campo de texto"
-                                let field = FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: checkbox)
+                                let field = FormEntry(page: index, rect: rect, label: label ?? fallback, checkbox: checkbox, origin: table == nil ? "model" : "table")
                                 item.fields.append(field); provisional[field.id] = field; retained.insert(field.id)
                             }
                         }
                         item.fields.removeAll { field in
                             !retained.contains(field.id) && provisional[field.id] == field && !editedDuringAnalysis.contains(field.id)
                         }
-                        item.fields.sort { $0.page == $1.page ? $0.rect.midY > $1.rect.midY : $0.page < $1.page }
+                        item.fields.sort {
+                            if $0.page != $1.page { return $0.page < $1.page }
+                            return abs($0.rect.maxY - $1.rect.maxY) < 4 ? $0.rect.minX < $1.rect.minX : $0.rect.maxY > $1.rect.maxY
+                        }
                         changed()
                     }
                 }
             }
             try Task.checkCancellation()
-            if successful { item.analyzed = true; changed(); flush() }
+            if successful { item.analyzed = true; item.analysisVersion = 2; changed(); flush() }
             if !failures.isEmpty { error = "\(successful ? "Análisis parcial. " : "No se pudo analizar. ")\(failures.joined(separator: "\n"))" }
         } catch is CancellationError { return }
         catch { self.error = error.localizedDescription }
@@ -345,6 +367,20 @@ enum PDFFormWriter {
                                  checkbox: checkbox, widgetName: name)
             }
         }
+    }
+    static func imageRect(_ rect: CGRect, imageSize: CGSize, bounds: CGRect, rotation: Int = 0) -> CGRect {
+        let x = (rect.minX - bounds.minX) / bounds.width
+        let y = (rect.minY - bounds.minY) / bounds.height
+        let w = rect.width / bounds.width, h = rect.height / bounds.height
+        let normalized: CGRect
+        switch (rotation % 360 + 360) % 360 {
+        case 90: normalized = CGRect(x: y, y: x, width: h, height: w)
+        case 180: normalized = CGRect(x: 1 - x - w, y: y, width: w, height: h)
+        case 270: normalized = CGRect(x: 1 - y - h, y: 1 - x - w, width: h, height: w)
+        default: normalized = CGRect(x: x, y: 1 - y - h, width: w, height: h)
+        }
+        return CGRect(x: normalized.minX * imageSize.width, y: normalized.minY * imageSize.height,
+                      width: normalized.width * imageSize.width, height: normalized.height * imageSize.height)
     }
     static func pdfRect(_ rect: CGRect, imageSize: CGSize, bounds: CGRect, rotation: Int = 0) -> CGRect {
         let x = rect.minX / imageSize.width, y = rect.minY / imageSize.height

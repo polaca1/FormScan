@@ -11,6 +11,39 @@ final class FormScanUITests: XCTestCase {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
+    func testTableAutomaticAnalysisBothHeadersFillPreviewAndReopen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-table"]
+        app.launch()
+        let picker = app.segmentedControls["editorMode"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        let status = app.descendants(matching: .any)["documentStatus"].firstMatch
+        let analyzed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'Análisis completado' AND label CONTAINS 'de 18 campos'"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [analyzed], timeout: 60), .completed)
+        screenshot("26-table-eighteen-cells")
+        picker.buttons["Formulario"].tap()
+        let fieldLabel = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'insufficient' AND label CONTAINS[c] 'Possible causes'")).firstMatch
+        XCTAssertTrue(fieldLabel.waitForExistence(timeout: 8))
+        let value = app.textViews.matching(NSPredicate(format: "identifier CONTAINS[c] 'insufficient' AND identifier CONTAINS[c] 'Possible causes'")).firstMatch
+        let entry = value.exists ? value : app.textFields.matching(NSPredicate(format: "identifier CONTAINS[c] 'insufficient' AND identifier CONTAINS[c] 'Possible causes'")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        let identifier = entry.identifier
+        entry.tap(); entry.typeText("Water shortage 123")
+        app.buttons["finishFormEditing"].tap()
+        screenshot("27-table-row-and-column")
+        picker.buttons["Documento"].tap()
+        screenshot("28-table-filled-preview")
+        app.buttons["closeDocument"].tap()
+        app.terminate()
+        app.launchArguments = ["-ui-testing-reopen"]
+        app.launch()
+        app.staticTexts["The environment"].firstMatch.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        picker.buttons["Formulario"].tap()
+        let restored = app.textViews[identifier].exists ? app.textViews[identifier] : app.textFields[identifier]
+        XCTAssertEqual(restored.value as? String, "Water shortage 123")
+    }
+
     func testHomeUsesFullScreenAndSupportsDarkMode() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]

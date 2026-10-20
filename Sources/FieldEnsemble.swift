@@ -46,7 +46,7 @@ enum FieldEnsemble {
             for field in results[model] ?? [] {
                 if let index = clusters.firstIndex(where: { cluster in
                     cluster.contains { vote in
-                        vote.field.rect.intersection(field.rect).area > min(vote.field.rect.area, field.rect.area) * 0.5
+                        vote.field.category == field.category && vote.field.rect.intersection(field.rect).area > min(vote.field.rect.area, field.rect.area) * 0.5
                     }
                 }) { clusters[index].append(Vote(model: model, field: field)) }
                 else { clusters.append([Vote(model: model, field: field)]) }
