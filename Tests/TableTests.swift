@@ -1,5 +1,6 @@
 import XCTest
 import PDFKit
+import Combine
 @testable import FormScan
 
 @MainActor
@@ -80,7 +81,7 @@ final class TableTests: XCTestCase {
         let reopened = try XCTUnwrap(DocumentLibrary(directory: directory).session(id: id))
         XCTAssertEqual(reopened.item.fields.count, 18)
         XCTAssertEqual(reopened.item.fields.first { $0.id == field.id }?.text, field.text)
-        XCTAssertEqual(reopened.item.analysisVersion, 2)
+        XCTAssertEqual(reopened.item.analysisVersion, DocumentSession.analysisVersion)
     }
 
     func testImageAndPDFCoordinatesRoundTripForAllPageRotations() {
@@ -94,6 +95,86 @@ final class TableTests: XCTestCase {
             XCTAssertEqual(actual.width, rect.width, accuracy: 0.01)
             XCTAssertEqual(actual.height, rect.height, accuracy: 0.01)
         }
+    }
+
+    func testAllClassesAndOverhangingBoxesNeedPrintedSupportBelowTable() throws {
+        let (image, _, grid) = try read(ExampleTable.make())
+        let scale = CGFloat(image.cgImage!.width) / 842
+        for category in 0...2 {
+            for x in [CGFloat(215), 610] {
+                let phantom = DetectedField(rect: CGRect(x: x*scale, y: 507*scale, width: 200*scale, height: 55*scale), category: category, confidence: 0.99)
+                XCTAssertTrue(grid.replaces(phantom), "No predicted class may invent a seventh row")
+            }
+        }
+        let (signedImage, _, signedGrid) = try read(ExampleTable.reported(signature: true))
+        let signedScale = CGFloat(signedImage.cgImage!.width) / 792
+        let signature = DetectedField(rect: CGRect(x: 222*signedScale, y: 572*signedScale, width: 198*signedScale, height: 22*signedScale), category: 2, confidence: 0.9)
+        XCTAssertEqual(signedGrid.fields.count, 18)
+        XCTAssertFalse(signedGrid.replaces(signature), "A real labelled signature underline is preserved")
+    }
+
+    func testReportedWorksheetThinBordersAndThreeModelsDoNotAddSeventhRow() async throws {
+        let pdf = ExampleTable.reported()
+        let (_, _, grid) = try read(pdf)
+        XCTAssertEqual(grid.tables.count, 1)
+        XCTAssertEqual(grid.fields.count, 18)
+        let (_, _, tail) = try read(ExampleTable.reported(tailRules: true))
+        XCTAssertEqual(tail.fields.count, 18, "Unlabelled continuation lines are not response rows")
+        let jobs = try [(AIModel.nano, Bundle.main.url(forResource: "model", withExtension: "onnx")),
+                        (.compact, Bundle(for: TableTests.self).url(forResource: "nano-compact", withExtension: "onnx")),
+                        (.detailed, Bundle(for: TableTests.self).url(forResource: "ffdetr-mobile-int8", withExtension: "onnx"))].map {
+            InferenceJob(model: $0.0, url: try XCTUnwrap($0.1))
+        }
+        let session = DocumentSession(item: SavedDocument(title: "Reported", pageCount: 1, fields: []), document: pdf) { _, _ in }
+        var maximum = 0
+        let observation = session.$item.sink { maximum = max(maximum, $0.fields.count) }
+        await session.detect(jobs: jobs, parallelism: 2)
+        withExtendedLifetime(observation) {}
+        XCTAssertNil(session.error)
+        XCTAssertEqual(session.item.fields.count, 18)
+        XCTAssertEqual(maximum, 18, "Every progressive model result must respect the printed boundary")
+        XCTAssertEqual(Set(session.item.fields.map(\.label)).count, 18)
+        XCTAssertTrue(session.item.fields.allSatisfy { $0.rect.minY >= 612 - 535 - 2 })
+    }
+
+    func testSavedTwentyOneFieldsUpgradeRepairsOnlyUneditedGhosts() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = DocumentLibrary(directory: directory)
+        let id = try library.add(ExampleTable.reported(), title: "Upgrade")
+        let session = try XCTUnwrap(library.session(id: id))
+        ExampleTable.seedLegacyFields(in: session)
+        let ghosts = Set(session.item.fields.suffix(3).map(\.id))
+        session.item.fields[19].origin = "table"
+        let (_, _, printed) = try read(session.document)
+        session.item.fields[19].label = try XCTUnwrap(printed.fields.dropFirst(16).first).label
+        session.item.fields[20].origin = nil
+        session.item.fields[20].label = "Campo de texto"
+        var answer = session.item.fields[0]
+        answer.text = "Water shortage 123"; session.update(answer)
+        let customID = session.item.fields[1].id
+        session.item.fields[1].label = "My custom label"
+        let manual = FormEntry(page: 0, rect: CGRect(x: 430, y: 28, width: 100, height: 22), label: "Texto", origin: "manual")
+        session.item.fields.append(manual); session.flush()
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let models = ModelStore(directory: directory.appendingPathComponent("Models"), defaults: defaults)
+        session.startAnalysis(using: models, automatic: true)
+        for _ in 0..<600 {
+            if session.item.analysisVersion == DocumentSession.analysisVersion && !session.busy { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertNil(session.error)
+        XCTAssertEqual(session.item.analysisVersion, DocumentSession.analysisVersion)
+        XCTAssertEqual(session.item.fields.count, 19, "18 real cells plus the explicit manual field")
+        XCTAssertTrue(ghosts.isDisjoint(with: session.item.fields.map(\.id)))
+        XCTAssertEqual(session.item.fields.first { $0.id == answer.id }?.text, answer.text)
+        XCTAssertEqual(session.item.fields.first { $0.id == customID }?.label, "My custom label")
+        XCTAssertTrue(session.item.fields.contains { $0.id == manual.id })
+        let exported = try XCTUnwrap(PDFDocument(url: session.export()))
+        XCTAssertTrue(exported.string?.contains(answer.text) == true)
+        let reopened = try XCTUnwrap(DocumentLibrary(directory: directory).session(id: id))
+        XCTAssertEqual(reopened.item.fields.count, 19)
+        XCTAssertEqual(reopened.item.fields.first { $0.id == answer.id }?.text, answer.text)
     }
 
     func testOrdinaryFormsDoNotBecomeTables() throws {

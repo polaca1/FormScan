@@ -128,7 +128,7 @@ struct LibraryView: View {
             if args.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
             if args.contains("-ui-testing-reopen") { section = .documents }
             #if DEBUG
-            if args.contains("-ui-testing-table"), library.documents.isEmpty { openDocument(ExampleTable.make(), title: "The environment") }
+            if args.contains("-ui-testing-table"), library.documents.isEmpty { openReportedTable() }
             if args.contains("-ui-testing-import") { prepareImportFixture() }
             #endif
         }
@@ -175,6 +175,16 @@ struct LibraryView: View {
         openDocument(pdf, title: "Escaneo")
     }
     #if DEBUG
+    private func openReportedTable() {
+        do {
+            let id = try library.add(ExampleTable.reported(), title: "The environment")
+            guard let session = library.session(id: id) else { return }
+            ExampleTable.seedLegacyFields(in: session)
+            section = .documents
+            session.startAnalysis(using: models, automatic: true)
+            openedDocument = EditorDestination(id: id)
+        } catch { self.error = error.localizedDescription }
+    }
     private func prepareImportFixture() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? ExampleDocument.make().dataRepresentation()?.write(to: directory.appendingPathComponent("Importar prueba.pdf"), options: .atomic)

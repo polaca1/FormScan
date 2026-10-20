@@ -18,6 +18,8 @@ struct TableGrid {
     }
     let tables: [Table]
     private var printedBoxes: [CGRect] = []
+    private var horizontalRules: [Rule] = []
+    private var recognizedLines: [RecognizedLine] = []
 
     var fields: [Field] {
         tables.flatMap { table in
@@ -45,28 +47,56 @@ struct TableGrid {
         }
     }
 
-    /// Replace model boxes inside a verified grid; reject extrapolated rows
-    /// immediately below it unless a separate printed field supports the box.
+    /// Printed structure owns overlapping model boxes, independent of their
+    /// predicted class. A "signature" is not permission to invent another row.
     func owns(_ rect: CGRect) -> Bool {
-        tables.contains { table in
+        guard !rect.isEmpty, !rect.isNull else { return false }
+        return tables.contains { table in
             if table.bounds.intersection(rect).area > rect.area * 0.25 { return true }
             let rowHeight = table.cells.map { $0.rect.height }.sorted()[table.cells.count / 2]
-            return rect.minY >= table.bounds.maxY - 3 && rect.minY < table.bounds.maxY + rowHeight * 2 &&
-                rect.minX >= table.bounds.minX - 3 && rect.maxX <= table.bounds.maxX + 3 &&
-                !printedBoxes.contains { $0.intersection(rect).area > rect.area * 0.8 && $0.area < rect.area * 2 }
+            let overlap = max(0, min(rect.maxX, table.bounds.maxX) - max(rect.minX, table.bounds.minX))
+            // Model boxes are approximate: do not require both X edges to lie
+            // within three pixels of the table. Slightly oversized boxes leaked.
+            let continuation = rect.midY > table.bounds.maxY - rowHeight * 0.15 &&
+                rect.minY < table.bounds.maxY + rowHeight * 2.5 &&
+                overlap > min(rect.width, table.bounds.width) * 0.65
+            guard continuation else { return false }
+            return !hasPrintedControl(rect, below: table.bounds.maxY)
         }
     }
 
-    func replaces(_ detection: DetectedField) -> Bool {
-        if detection.category != 0 {
-            return tables.contains { $0.bounds.intersection(detection.rect).area > detection.rect.area * 0.25 }
+    func replaces(_ detection: DetectedField) -> Bool { owns(detection.rect) }
+
+    func matchesCell(_ rect: CGRect, checkbox: Bool) -> Bool {
+        fields.contains {
+            $0.checkbox == checkbox && $0.rect.intersection(rect).area > max($0.rect.area, rect.area) * 0.65
         }
-        return owns(detection.rect)
     }
 
     func replacesLegacy(label: String) -> Bool {
-        ["Campo de texto", "Firma", "Texto", "Opción sin etiqueta", "Casilla"].contains(label) ||
-        tables.contains { $0.cells.contains { !$0.content.isEmpty && $0.content == label } }
+        ["Campo de texto", "Firma", "Opción sin etiqueta", "Casilla"].contains(label) ||
+        tables.contains { $0.cells.contains { !$0.content.isEmpty && normalized($0.content) == normalized(label) } } ||
+        fields.contains { normalized($0.label) == normalized(label) }
+    }
+
+    private func normalized(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
+    }
+
+    private func hasPrintedControl(_ rect: CGRect, below bottom: CGFloat) -> Bool {
+        if printedBoxes.contains(where: {
+            $0.minY > bottom + 3 && $0.intersection(rect).area > rect.area * 0.75 && $0.area < rect.area * 1.6
+        }) { return true }
+        // A separate labelled underline/signature field is valid too. The
+        // table's bottom border must never stand in for a missing lower edge.
+        return rect.minY > bottom + 3 &&
+            FieldLabels.label(for: rect, checkbox: false, lines: recognizedLines) != nil &&
+            horizontalRules.contains {
+                abs($0.axis - rect.maxY) < max(4, rect.height * 0.25) &&
+                    $0.start >= rect.minX - rect.width * 0.15 && $0.end <= rect.maxX + rect.width * 0.15 &&
+                    $0.end - $0.start >= rect.width * 0.65
+            }
     }
 
     private struct Rule {
@@ -94,9 +124,21 @@ struct TableGrid {
             return true
         }
         guard rendered else { return TableGrid(tables: []) }
+        // Anti-aliased thin gray rules can be brighter than 210 on a white
+        // PDF. Estimate paper luminance instead of treating them as blank.
+        var histogram = [Int](repeating: 0, count: 256)
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            histogram[(Int(pixels[i]) + Int(pixels[i + 1]) + Int(pixels[i + 2])) / 3] += 1
+        }
+        var cumulative = 0, paper = 255
+        for value in histogram.indices {
+            cumulative += histogram[value]
+            if cumulative >= width * height * 9 / 10 { paper = value; break }
+        }
+        let inkLimit = min(245, paper - 8) * 3
         func dark(_ x: Int, _ y: Int) -> Bool {
             let i = (y * width + x) * 4
-            return Int(pixels[i]) + Int(pixels[i + 1]) + Int(pixels[i + 2]) < 630
+            return Int(pixels[i]) + Int(pixels[i + 1]) + Int(pixels[i + 2]) < inkLimit
         }
         func rules(horizontal: Bool) -> [Rule] {
             let length = horizontal ? width : height, count = horizontal ? height : width
@@ -178,6 +220,8 @@ struct TableGrid {
             let candidate = TableGrid(tables: [table])
             return candidate.fields.count >= 2 ? table : nil
         }
-        return TableGrid(tables: tables, printedBoxes: rectangles)
+        return TableGrid(tables: tables, printedBoxes: rectangles,
+                         horizontalRules: horizontal.map { Rule(axis: $0.axis / scale, start: $0.start / scale, end: $0.end / scale) },
+                         recognizedLines: lines)
     }
 }

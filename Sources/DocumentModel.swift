@@ -100,6 +100,7 @@ final class DocumentLibrary: ObservableObject {
 
 @MainActor
 final class DocumentSession: ObservableObject {
+    static let analysisVersion = 3
     @Published var item: SavedDocument
     let document: PDFDocument
     @Published var revision = 0
@@ -116,7 +117,7 @@ final class DocumentSession: ObservableObject {
         valid = false; pendingSave?.cancel(); analysisTask?.cancel()
     }
     func startAnalysis(using models: ModelStore, automatic: Bool = false) {
-        guard !busy, analysisTask == nil, !automatic || item.analyzed != true || (item.analysisVersion ?? 0) < 2 else { return }
+        guard !busy, analysisTask == nil, !automatic || item.analyzed != true || (item.analysisVersion ?? 0) < Self.analysisVersion else { return }
         let jobs = models.analysisJobs, parallelism = models.parallelism
         analysisTask = Task { [weak self] in
             guard let self else { return }
@@ -233,8 +234,9 @@ final class DocumentSession: ObservableObject {
                 // Values, native widgets, manual fields and custom labels survive.
                 item.fields.removeAll { field in
                     guard field.page == index, field.widgetName == nil, !field.completed,
-                          field.origin != "manual", field.origin != "table", !editedDuringAnalysis.contains(field.id) else { return false }
+                          field.origin != "manual", !editedDuringAnalysis.contains(field.id) else { return false }
                     let imageRect = PDFFormWriter.imageRect(field.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
+                    if field.origin == "table", grid.matchesCell(imageRect, checkbox: field.checkbox) { return false }
                     return grid.owns(imageRect) && (field.origin == "model" || grid.replacesLegacy(label: field.label))
                 }
                 let tableFields = grid.fields
@@ -293,7 +295,7 @@ final class DocumentSession: ObservableObject {
                 }
             }
             try Task.checkCancellation()
-            if successful { item.analyzed = true; item.analysisVersion = 2; changed(); flush() }
+            if successful { item.analyzed = true; item.analysisVersion = Self.analysisVersion; changed(); flush() }
             if !failures.isEmpty { error = "\(successful ? "Análisis parcial. " : "No se pudo analizar. ")\(failures.joined(separator: "\n"))" }
         } catch is CancellationError { return }
         catch { self.error = error.localizedDescription }
