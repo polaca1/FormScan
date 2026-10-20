@@ -4,8 +4,14 @@ on:
     branches: [main, codex/ios26-rebuild]
     paths-ignore: [source.json, sidestore-v2.json, README.md]
   workflow_dispatch:
+    inputs:
+      verified_ios26_run:
+        description: 'Reuse a successful iOS 26 job only if all application/build inputs are unchanged'
+        required: false
+        default: ''
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: formscan-ios26-${{ github.ref }}
   cancel-in-progress: true
@@ -14,19 +20,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-26
-            xcode: '26.6'
-            ios: '26'
-          - runner: xcode-27
-            xcode: '27.0'
-            ios: '27'
+        include: ${{ fromJSON(inputs.verified_ios26_run != '' && '[{"runner":"xcode-27","xcode":"27.0","ios":"27"}]' || '[{"runner":"macos-26","xcode":"26.6","ios":"26"},{"runner":"xcode-27","xcode":"27.0","ios":"27"}]') }}
     runs-on: ${{ matrix.runner }}
     env:
       SIMULATOR_OS_MAJOR: ${{ matrix.ios }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Validate unchanged application against the completed iOS 26 verification
+        if: inputs.verified_ios26_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_RUN: ${{ inputs.verified_ios26_run }}
+        run: |
+          [[ "$VERIFIED_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN/jobs?per_page=100" > previous-ios26-jobs.json
+          python3 - <<'PYVALIDATE'
+          import json
+          jobs = json.load(open('previous-ios26-jobs.json'))['jobs']
+          matching = [job for job in jobs if 'macos-26' in job['name']]
+          assert len(matching) == 1 and matching[0]['conclusion'] == 'success', 'A fully passing iOS 26 job is required'
+          PYVALIDATE
+          VERIFIED_SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN" --jq .head_sha)
+          git fetch origin "$VERIFIED_SHA" --depth=1
+          git diff --exit-code "$VERIFIED_SHA" HEAD -- Sources Models Assets.xcassets Artwork Config project.yml Scripts/prepare_models.py Scripts/GenerateIcon.swift
+          echo "Reusing the complete passing iOS 26 verification of unchanged application inputs: $VERIFIED_SHA"
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: ${{ matrix.xcode }}

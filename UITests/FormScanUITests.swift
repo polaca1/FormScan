@@ -241,9 +241,11 @@ final class FormScanUITests: XCTestCase {
         app.launch()
         app.buttons["importDocument"].tap()
         executionTimeAllowance = 180
-        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "Explorar"])).firstMatch
+        // iOS 27 exposes the Files tab as an accessibility tab rather
+        // than a button. Query the visible native element by label.
+        let browse = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Browse", "Explorar"])).firstMatch
         if browse.waitForExistence(timeout: 10) { browse.tap() }
-        let location = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "En mi iPhone"])).firstMatch
+        let location = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["On My iPhone", "En mi iPhone"])).firstMatch
         if location.waitForExistence(timeout: 10) { location.tap() }
         let folder = app.staticTexts["FormScan"].firstMatch
         if folder.waitForExistence(timeout: 10) { folder.tap() }
