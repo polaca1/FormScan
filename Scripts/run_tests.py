@@ -22,6 +22,7 @@ def run(command, expected, log_path, grace=90):
 
     threading.Thread(target=read, daemon=True).start()
     root_passed = False
+    root_failed = False
     count_passed = False
     completed_at = None
     stream_done = False
@@ -39,9 +40,13 @@ def run(command, expected, log_path, grace=90):
                 log.write(line); log.flush()
                 if re.search(r"Test Suite '(Selected tests|All tests)' passed", line):
                     root_passed = True
+                if re.search(r"Test Suite '(Selected tests|All tests)' failed", line):
+                    root_failed = True
                 match = re.search(r'Executed (\d+) tests?, with (\d+) failures?', line)
                 if match and int(match[1]) == expected and int(match[2]) == 0 and root_passed:
                     count_passed = True
+                if match and int(match[1]) == expected and int(match[2]) > 0 and root_failed and completed_at is None:
+                    completed_at = time.monotonic()
                 if root_passed and count_passed and completed_at is None:
                     completed_at = time.monotonic()
             status = process.poll()
@@ -54,7 +59,7 @@ def run(command, expected, log_path, grace=90):
                         return 1
                     return status
             if status is None and completed_at is not None and time.monotonic() - completed_at > grace:
-                message = f'All {expected} XCTest cases passed; xcodebuild stalled while finalizing the result bundle.\n'
+                message = f'XCTest root suite {"failed" if root_failed else "passed"} ({expected} cases); xcodebuild stalled while finalizing the result bundle.\n'
                 print(message, end='', flush=True); log.write(message); log.flush()
                 for sig, timeout in [(signal.SIGINT, 15), (signal.SIGTERM, 10), (signal.SIGKILL, 5)]:
                     try:
@@ -66,9 +71,9 @@ def run(command, expected, log_path, grace=90):
                     except subprocess.TimeoutExpired:
                         continue
                 # A normal nonzero exit is never converted to success. This path
-                # only handles a process still alive after the exact root suite
-                # and expected zero-failure test count have both been recorded.
-                return 0
+                # only handles a process still alive after the exact root suite.
+                # A failing suite always remains a failure.
+                return 1 if root_failed else 0
 
 
 if __name__ == '__main__':

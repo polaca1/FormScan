@@ -100,7 +100,7 @@ struct TableGrid {
         }
         func rules(horizontal: Bool) -> [Rule] {
             let length = horizontal ? width : height, count = horizontal ? height : width
-            let minimum = horizontal ? max(24, width / 35) : max(18, height / 90)
+            let minimum = horizontal ? max(18, width / 90) : max(18, height / 90)
             var result: [Rule] = []
             for axis in 0..<count {
                 var start: Int?, last = 0
@@ -135,7 +135,7 @@ struct TableGrid {
         }
         let xs = coordinates(vertical)
         // Dense graphics/photographs are not tables. Avoid combinatorial work.
-        guard xs.count >= 3, xs.count <= 128, horizontal.count <= 512 else { return TableGrid(tables: []) }
+        guard xs.count >= 3, xs.count <= 128, horizontal.count <= 2048 else { return TableGrid(tables: []) }
         func covered(_ rules: [Rule], axis: CGFloat, from: CGFloat, to: CGFloat) -> Bool {
             rules.contains { abs($0.axis - axis) < 4 && $0.start <= from + 4 && $0.end >= to - 4 }
         }
