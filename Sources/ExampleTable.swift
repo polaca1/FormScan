@@ -78,6 +78,7 @@ enum ExampleTable {
     }
 
     /// Upgrade fixture with the same 21-field failure reported in the screenshot.
+    @MainActor
     static func seedLegacyFields(in session: DocumentSession) {
         let xs: [CGFloat] = [222, 420, 584, 752]
         for row in 0..<7 { for column in 0..<3 {
