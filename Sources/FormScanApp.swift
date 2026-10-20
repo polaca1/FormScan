@@ -84,7 +84,10 @@ struct LibraryView: View {
         navigation
         .fullScreenCover(item: $openedDocument) { destination in
             NavigationStack {
-                if let session = library.session(id: destination.id) { EditorView(session: session) }
+                if let session = library.session(id: destination.id) {
+                    EditorView(session: session)
+                        .task(id: destination.id) { session.startAnalysis(using: models, automatic: true) }
+                }
                 else { ContentUnavailableView("No se pudo abrir", systemImage: "doc.badge.ellipsis") }
             }
         }
@@ -181,7 +184,6 @@ struct LibraryView: View {
             guard let session = library.session(id: id) else { return }
             ExampleTable.seedLegacyFields(in: session)
             section = .documents
-            session.startAnalysis(using: models, automatic: true)
             openedDocument = EditorDestination(id: id)
         } catch { self.error = error.localizedDescription }
     }
