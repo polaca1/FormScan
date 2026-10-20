@@ -30,6 +30,8 @@ final class TableTests: XCTestCase {
         XCTAssertEqual(open.fields.count, 15, "An open row is not evidence for three closed cells")
         let (_, _, filled) = try read(ExampleTable.make(filledCell: true))
         XCTAssertEqual(filled.fields.count, 17)
+        XCTAssertFalse(filled.fields.contains { $0.label.contains("Observed answer") || $0.label.contains("123") })
+        XCTAssertEqual(filled.fields.filter { $0.label.localizedCaseInsensitiveContains("insufficient") }.count, 2)
         XCTAssertTrue(filled.tables.flatMap(\.cells).contains { $0.content.contains("123") })
     }
 

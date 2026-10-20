@@ -221,8 +221,8 @@ final class DocumentSession: ObservableObject {
                 let bounds = page.bounds(for: .cropBox), rotation = page.rotation
                 // Analyze the original printed page, not FormScan's own answers
                 // or PDFKit's widget appearances from a previous edit.
-                let visibility = page.annotations.map { ($0, $0.shouldDisplay) }
-                page.annotations.forEach { $0.shouldDisplay = false }
+                let visibility = page.annotations.filter { $0.userName?.hasPrefix(PDFFormWriter.prefix) == true || $0.type == "Widget" }.map { ($0, $0.shouldDisplay) }
+                visibility.forEach { $0.0.shouldDisplay = false }
                 let image = page.thumbnail(of: CGSize(width: 1400, height: 1800), for: .cropBox)
                 for (annotation, visible) in visibility { annotation.shouldDisplay = visible }
                 let imageSize = CGSize(width: image.cgImage!.width, height: image.cgImage!.height)

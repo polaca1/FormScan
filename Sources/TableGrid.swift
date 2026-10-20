@@ -26,7 +26,7 @@ struct TableGrid {
                 let row = table.cells.filter {
                     !$0.content.isEmpty && $0.rect.maxX <= cell.rect.minX + 3 &&
                     abs($0.rect.midY - cell.rect.midY) < min($0.rect.height, cell.rect.height) * 0.4
-                }.max { $0.rect.maxX < $1.rect.maxX }?.content
+                }.min { $0.rect.minX < $1.rect.minX }?.content
                 let column = table.cells.filter {
                     !$0.content.isEmpty && $0.rect.maxY <= cell.rect.minY + 3 &&
                     abs($0.rect.midX - cell.rect.midX) < min($0.rect.width, cell.rect.width) * 0.4
