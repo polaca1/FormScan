@@ -248,16 +248,37 @@ final class FormScanUITests: XCTestCase {
         app.launch()
         app.buttons["importDocument"].tap()
         executionTimeAllowance = 180
-        // iOS 27 exposes the Files tab as an accessibility tab rather
-        // than a button. Query the visible native element by label.
-        let browse = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Browse", "Explorar"])).firstMatch
-        if browse.waitForExistence(timeout: 10) { browse.tap() }
-        let location = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["On My iPhone", "En mi iPhone"])).firstMatch
-        if location.waitForExistence(timeout: 10) { location.tap() }
-        let folder = app.staticTexts["FormScan"].firstMatch
-        if folder.waitForExistence(timeout: 10) { folder.tap() }
-        let actualFile = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Importar prueba", "Importar prueba.pdf"])).firstMatch
-        guard actualFile.waitForExistence(timeout: 15) else { XCTFail("El archivo no aparece en Archivos"); screenshot("22-import-missing-file"); return }
+        // Native Files controls can change AX roles across releases. Typed,
+        // exact label queries also avoid an iOS 27 remote-view snapshot bug
+        // where `label IN` returned no matches for a visible Browse button.
+        func nativeElement(_ labels: [String], timeout: TimeInterval) -> XCUIElement? {
+            let deadline = Date().addingTimeInterval(timeout)
+            repeat {
+                for label in labels {
+                    for element in [app.buttons[label], app.staticTexts[label], app.descendants(matching: .any).matching(identifier: label).firstMatch] {
+                        if element.exists && element.isHittable { return element }
+                    }
+                }
+                Thread.sleep(forTimeInterval: 0.25)
+            } while Date() < deadline
+            print("Native Files hierarchy:", app.debugDescription)
+            return nil
+        }
+        guard let browse = nativeElement(["Browse", "Explorar"], timeout: 15) else {
+            screenshot("22-import-missing-browse"); XCTFail("No se encuentra Explorar en Archivos"); return
+        }
+        browse.tap()
+        guard let location = nativeElement(["On My iPhone", "En mi iPhone"], timeout: 15) else {
+            screenshot("22-import-missing-location"); XCTFail("No se encuentra En mi iPhone"); return
+        }
+        location.tap()
+        guard let folder = nativeElement(["FormScan"], timeout: 15) else {
+            screenshot("22-import-missing-folder"); XCTFail("No se encuentra la carpeta FormScan"); return
+        }
+        folder.tap()
+        guard let actualFile = nativeElement(["Importar prueba", "Importar prueba.pdf"], timeout: 15) else {
+            screenshot("22-import-missing-file"); XCTFail("El archivo no aparece en Archivos"); return
+        }
         screenshot("22-import-actual-file")
         let cell = app.cells.containing(.staticText, identifier: actualFile.label).firstMatch
         if cell.exists { cell.tap() }
