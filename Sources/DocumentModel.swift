@@ -251,7 +251,7 @@ final class DocumentSession: ObservableObject {
                         successful = true
                         results[result.model] = fields
                         let modelFields = FieldEnsemble.fuse(results).filter { !grid.replaces($0) }
-                        let fused = tableFields.map { DetectedField(rect: $0.rect, category: 0, confidence: 1) } + modelFields
+                        let fused = tableFields.map { DetectedField(rect: $0.rect, category: $0.checkbox ? 1 : 0, confidence: 1) } + modelFields
                         var retained = Set<UUID>()
                         for detection in fused {
                             let rect = PDFFormWriter.pdfRect(detection.rect, imageSize: imageSize, bounds: bounds, rotation: rotation)
@@ -262,7 +262,7 @@ final class DocumentSession: ObservableObject {
                             let table = tableFields.first { $0.rect == detection.rect }
                             let label = table?.label ?? FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
                             if let existing = item.fields.firstIndex(where: {
-                                $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
+                                $0.page == index && $0.checkbox == checkbox && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
                             }) {
                                 let field = item.fields[existing]
                                 retained.insert(field.id)

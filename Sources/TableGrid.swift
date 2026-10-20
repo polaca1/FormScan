@@ -14,6 +14,7 @@ struct TableGrid {
     struct Field {
         let rect: CGRect
         let label: String
+        let checkbox: Bool
     }
     let tables: [Table]
     private var printedBoxes: [CGRect] = []
@@ -32,7 +33,12 @@ struct TableGrid {
                 }.min { $0.rect.minY < $1.rect.minY }?.content
                 // Do not turn an empty header/corner into a response field.
                 guard let row, let column else { return nil }
-                return Field(rect: cell.rect.insetBy(dx: 3, dy: 3), label: row + " · " + column)
+                let checkbox = printedBoxes.first {
+                    cell.rect.insetBy(dx: 2, dy: 2).contains($0) && $0.area < cell.rect.area * 0.3 &&
+                        $0.width / $0.height > 0.7 && $0.width / $0.height < 1.4
+                }
+                return Field(rect: checkbox ?? cell.rect.insetBy(dx: 3, dy: 3),
+                             label: row + " · " + column, checkbox: checkbox != nil)
             }
         }.sorted { a, b in
             abs(a.rect.midY - b.rect.midY) < 3 ? a.rect.minX < b.rect.minX : a.rect.minY < b.rect.minY

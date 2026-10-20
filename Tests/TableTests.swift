@@ -42,6 +42,10 @@ final class TableTests: XCTestCase {
         XCTAssertFalse(grid.replaces(text))
         XCTAssertFalse(grid.replaces(check))
         XCTAssertTrue(grid.replaces(phantom))
+        let (_, _, mixedGrid) = try read(ExampleTable.make(checkboxCell: true))
+        XCTAssertEqual(mixedGrid.fields.count, 18)
+        XCTAssertEqual(mixedGrid.fields.filter(\.checkbox).count, 1)
+        XCTAssertEqual(mixedGrid.fields.filter { !$0.checkbox }.count, 17)
         var overlapping = check; overlapping.rect = text.rect
         let fused = FieldEnsemble.fuse([.nano: [text, overlapping]])
         XCTAssertEqual(Set(fused.map(\.category)), Set([0, 1]))

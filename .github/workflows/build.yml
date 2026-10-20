@@ -69,16 +69,16 @@ jobs:
         run: |
           set -o pipefail
           python3 -u Scripts/start_simulator.py | tee simulator-start.log
-      - name: Verify actual Files import and a checked box first
-        timeout-minutes: 12
-        run: |
-          set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 2 --log critical-ui-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test
       - name: Test PDF editing and three real offline models
         timeout-minutes: 10
         run: |
           set -o pipefail
           python3 -u Scripts/run_tests.py --expected 23 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
+      - name: Verify actual Files import and a checked box first
+        timeout-minutes: 12
+        run: |
+          set -o pipefail
+          python3 -u Scripts/run_tests.py --expected 2 --log critical-ui-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test
       - name: Test import, automatic analysis and native user interface
         timeout-minutes: 12
         run: |
