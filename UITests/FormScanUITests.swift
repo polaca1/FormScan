@@ -224,8 +224,15 @@ final class FormScanUITests: XCTestCase {
         let checkbox = app.switches["He revisado los datos del formulario."]
         if !checkbox.isHittable { app.swipeUp() }
         XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
-        // The accessible switch includes its label; tap the control itself.
-        checkbox.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        // The AX switch frame can include the entire label row on iOS 27.
+        // Anchor to the adjacent Edit control: 12 pt spacing plus 20 pt
+        // inside the visible track, independent of the label/row width.
+        let edit = app.buttons["Editar He revisado los datos del formulario."]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        let target = CGPoint(x: edit.frame.minX - 32, y: checkbox.frame.midY)
+        XCTAssertTrue(checkbox.frame.contains(target))
+        print("Switch AX:", checkbox.debugDescription, "Edit:", edit.frame, "Tap:", target)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: target.x, dy: target.y)).tap()
         let marked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: checkbox)
         XCTAssertEqual(XCTWaiter.wait(for: [marked], timeout: 5), .completed)
         screenshot("21-checkbox-label")
