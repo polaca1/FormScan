@@ -22,7 +22,7 @@ def generate(ipa, output):
         "downloadURL": f"{base}/FormScan-{version}.ipa",
         "size": pathlib.Path(ipa).stat().st_size,
         "minOSVersion": info["MinimumOSVersion"],
-        "localizedDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF.",
+        "localizedDescription": "Acceso con Google o correo, bienvenida con documento de ejemplo y análisis automático privado. Importa, completa y exporta tus PDF con una interfaz nativa para iOS 26 y 27.",
     }
     app = {
         "name": "FormScan", "bundleIdentifier": info["CFBundleIdentifier"],

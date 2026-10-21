@@ -10,3 +10,5 @@ Tests/Models/
 .build-tools/
 __pycache__/
 .DS_Store
+
+Sources/Resources/AccountConfiguration.plist

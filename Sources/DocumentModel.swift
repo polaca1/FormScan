@@ -56,6 +56,10 @@ final class DocumentLibrary: ObservableObject {
         }.sorted { $0.modified > $1.modified }
     }
 
+    func close() throws {
+        for session in sessions.values { try session.prepareForClose() }
+        sessions.removeAll(); thumbnails.removeAll()
+    }
     func add(_ pdf: PDFDocument, title: String) throws -> UUID {
         guard !pdf.isLocked else { throw FormScanError.locked }
         guard pdf.pageCount > 0 else { throw FormScanError.invalidDocument }
@@ -116,7 +120,7 @@ final class DocumentSession: ObservableObject {
     func invalidate() {
         valid = false; pendingSave?.cancel(); analysisTask?.cancel()
     }
-    func startAnalysis(using models: ModelStore, automatic: Bool = false) {
+    func startAnalysis(using models: AnalysisEngine, automatic: Bool = false) {
         guard !busy, analysisTask == nil, !automatic || item.analyzed != true || (item.analysisVersion ?? 0) < Self.analysisVersion else { return }
         let jobs = models.analysisJobs, parallelism = models.parallelism
         analysisTask = Task { [weak self] in
@@ -182,6 +186,11 @@ final class DocumentSession: ObservableObject {
         pendingSave?.cancel()
         do { try save(item, document) } catch { self.error = error.localizedDescription }
     }
+    func prepareForClose() throws {
+        pendingSave?.cancel(); analysisTask?.cancel()
+        try save(item, document)
+        invalidate()
+    }
     func export() throws -> URL {
         PDFFormWriter.synchronize(item.fields, in: document)
         let first = document.page(at: 0)!.bounds(for: .cropBox)
@@ -246,9 +255,9 @@ final class DocumentSession: ObservableObject {
                 var provisional: [UUID: FormEntry] = [:]
                 await FieldEnsemble.run(image: image, jobs: jobs, parallelism: parallelism) { result, completed in
                     guard !Task.isCancelled else { return }
-                    progress = "Página \(index + 1) · \(result.model.name) · \(completed)/\(jobs.count)"
+                    progress = "Revisando campos de la página \(index + 1) de \(document.pageCount)…"
                     switch result.fields {
-                    case .failure(let message): failures.append("\(result.model.name): \(message)")
+                    case .failure(let message): failures.append(message)
                     case .success(let fields):
                         successful = true
                         results[result.model] = fields
@@ -296,7 +305,12 @@ final class DocumentSession: ObservableObject {
             }
             try Task.checkCancellation()
             if successful { item.analyzed = true; item.analysisVersion = Self.analysisVersion; changed(); flush() }
-            if !failures.isEmpty { error = "\(successful ? "Análisis parcial. " : "No se pudo analizar. ")\(failures.joined(separator: "\n"))" }
+            if !failures.isEmpty {
+                #if DEBUG
+                print("Analysis diagnostics:", failures)
+                #endif
+                error = successful ? "Algunos campos no se han podido revisar. Puedes volver a analizar el documento." : "No se pudo analizar el documento. Vuelve a intentarlo."
+            }
         } catch is CancellationError { return }
         catch { self.error = error.localizedDescription }
     }

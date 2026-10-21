@@ -176,30 +176,42 @@ final class FormScanUITests: XCTestCase {
         app.staticTexts["Formulario de ejemplo"].firstMatch.tap()
         XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 8))
     }
-    func testModelMenuDownloadsAndSelectsCompactModel() {
+    func testSettingsExplainPrivacyWithoutModelControls() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
         let settings = app.tabBars.buttons["Ajustes"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 8)); settings.tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 12)); settings.tap()
         screenshot("19-settings")
-        app.buttons["Modelos de IA"].tap()
-        XCTAssertTrue(app.navigationBars["Modelos de IA"].waitForExistence(timeout: 8))
-        // Previous test runs may already have downloaded the compact model.
-        let install = app.buttons["install-compact"]
-        let use = app.buttons["use-compact"]
-        for _ in 0..<6 {
-            if install.isHittable || use.isHittable { break }
-            app.swipeUp()
-        }
-        if install.exists { install.tap() }
-        else { use.tap() }
-        let active = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND label == 'En uso'"), object: use)
-        XCTAssertEqual(XCTWaiter.wait(for: [active], timeout: 90), .completed)
-        XCTAssertFalse(app.alerts.firstMatch.exists)
-        XCTAssertEqual(app.state, .runningForeground, "Installing a model must not open its external model card")
-        XCTAssertTrue(app.navigationBars["Modelos de IA"].isHittable)
-        screenshot("17-models-installed")
+        XCTAssertFalse(app.buttons["openModels"].exists)
+        XCTAssertFalse(app.staticTexts["Modelos de IA"].exists)
+        app.buttons["Privacidad"].tap()
+        XCTAssertTrue(app.navigationBars["Privacidad"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Tus documentos"].exists)
+        screenshot("17-privacy")
+    }
+
+    func testFirstLaunchAccessValidationAndExample() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-welcome"]
+        app.launch()
+        XCTAssertTrue(app.buttons["googleSignIn"].waitForExistence(timeout: 12))
+        screenshot("29-account-welcome")
+        let email = app.textFields["accountEmail"]
+        email.tap(); email.typeText("incorrecto\n")
+        let password = app.secureTextFields["accountPassword"]
+        if password.isHittable { password.tap(); password.typeText("prueba123\n") }
+        if app.buttons["submitAccount"].isHittable { app.buttons["submitAccount"].tap() }
+        XCTAssertTrue(app.staticTexts["Introduce una dirección de correo válida."].waitForExistence(timeout: 5))
+        if app.keyboards.firstMatch.exists { app.swipeUp() }
+        let offline = app.buttons["continueOnDevice"]
+        for _ in 0..<5 { if offline.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(offline.isHittable); offline.tap()
+        let next = app.buttons["continueTutorial"]
+        XCTAssertTrue(next.waitForExistence(timeout: 10))
+        next.tap(); next.tap(); next.tap()
+        XCTAssertTrue(app.segmentedControls["editorMode"].waitForExistence(timeout: 15))
+        screenshot("30-account-example")
     }
 
     func testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText() {

@@ -59,7 +59,9 @@ def main():
     fixtures.mkdir(parents=True, exist_ok=True)
     for path in (compact, mobile):
         shutil.copyfile(path, fixtures / path.name)
-    print("All three pinned models verified. Only Nano FP32 is included in the app; alternatives are optional downloads.")
+    for path in (compact, mobile):
+        shutil.copyfile(path, ROOT / "Models" / path.name)
+    print("All three verified inference resources are bundled for automatic offline analysis.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ private struct SharedPDF: Identifiable { let id = UUID(); let url: URL }
 
 struct EditorView: View {
     @ObservedObject var session: DocumentSession
-    @EnvironmentObject private var models: ModelStore
+    @EnvironmentObject private var models: AnalysisEngine
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -116,7 +116,7 @@ struct EditorView: View {
                     session.startAnalysis(using: models)
                     mode = .form
                 }
-                .labelStyle(.titleAndIcon).accessibilityLabel("Detectar campos con IA")
+                .labelStyle(.titleAndIcon).accessibilityLabel("Revisar campos del documento")
                 .disabled(session.busy).accessibilityIdentifier("detectFields")
                 .accessibilityValue(session.busy ? "Analizando" : session.item.analyzed == true ? "Análisis completado" : "Pendiente")
                 Spacer()

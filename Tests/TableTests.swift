@@ -156,8 +156,7 @@ final class TableTests: XCTestCase {
         session.item.fields[1].label = "My custom label"
         let manual = FormEntry(page: 0, rect: CGRect(x: 430, y: 28, width: 100, height: 22), label: "Texto", origin: "manual")
         session.item.fields.append(manual); session.flush()
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
-        let models = ModelStore(directory: directory.appendingPathComponent("Models"), defaults: defaults)
+        let models = AnalysisEngine()
         session.startAnalysis(using: models, automatic: true)
         for _ in 0..<600 {
             if session.item.analysisVersion == DocumentSession.analysisVersion && !session.busy { break }

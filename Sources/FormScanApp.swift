@@ -7,8 +7,8 @@ private enum AppSection: Hashable { case home, documents, settings }
 
 @main
 struct FormScanApp: App {
-    @StateObject private var library = DocumentLibrary()
-    @StateObject private var models = ModelStore()
+    @StateObject private var account = AccountStore()
+    @StateObject private var models = AnalysisEngine()
     private var testAppearance: ColorScheme? {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ui-testing-dark") { return .dark }
@@ -17,14 +17,14 @@ struct FormScanApp: App {
     }
     var body: some Scene {
         WindowGroup {
-            LibraryView(library: library).environmentObject(models).preferredColorScheme(testAppearance)
+            AccountRootView().environmentObject(account).environmentObject(models).preferredColorScheme(testAppearance)
         }
     }
 }
 
 struct LibraryView: View {
     @ObservedObject var library: DocumentLibrary
-    @EnvironmentObject private var models: ModelStore
+    @EnvironmentObject private var models: AnalysisEngine
     @State private var section = AppSection.home
     @State private var openedDocument: EditorDestination?
     @State private var scanner = false
@@ -63,18 +63,7 @@ struct LibraryView: View {
             }
             Tab("Ajustes", systemImage: "gearshape", value: AppSection.settings) {
                 NavigationStack {
-                    List {
-                        Section {
-                            NavigationLink { ModelSettingsView(store: models) } label: {
-                                Label("Modelos de IA", systemImage: "cpu")
-                            }.accessibilityIdentifier("openModels")
-                        }
-                        Section {
-                            Button { tutorial = true } label: {
-                                Label("Primeros pasos", systemImage: "book.closed")
-                            }.buttonStyle(.borderless)
-                        }
-                    }.navigationTitle("Ajustes")
+                    AccountSettingsView { tutorial = true }
                 }
             }
         }
@@ -127,7 +116,7 @@ struct LibraryView: View {
             guard !tutorialChecked else { return }
             tutorialChecked = true
             let args = ProcessInfo.processInfo.arguments
-            if args.contains("-ui-testing-onboarding") || (!args.contains("-ui-testing") && !args.contains("-ui-testing-reopen") && !onboarded) { tutorial = true }
+            if args.contains("-ui-testing-onboarding") || ((!args.contains("-ui-testing") && !args.contains("-ui-testing-reopen") || args.contains("-ui-testing-welcome")) && !onboarded) { tutorial = true }
             if args.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
             if args.contains("-ui-testing-reopen") { section = .documents }
             #if DEBUG

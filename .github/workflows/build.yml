@@ -43,7 +43,7 @@ jobs:
           PYVALIDATE
           VERIFIED_SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN" --jq .head_sha)
           git fetch origin "$VERIFIED_SHA" --depth=1
-          git diff --exit-code "$VERIFIED_SHA" HEAD -- Sources Models Assets.xcassets Artwork Config project.yml Scripts/prepare_models.py Scripts/GenerateIcon.swift
+          git diff --exit-code "$VERIFIED_SHA" HEAD -- Sources Models Assets.xcassets Artwork Config project.yml Scripts/prepare_models.py Scripts/prepare_accounts.py Scripts/GenerateIcon.swift
           echo "Reusing the complete passing iOS 26 verification of unchanged application inputs: $VERIFIED_SHA"
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -62,6 +62,8 @@ jobs:
         run: |
           python3 -m pip install onnx==1.23.2 numpy==2.3.5 zstandard==0.25.0
           python3 Scripts/prepare_models.py
+      - name: Prepare public account configuration
+        run: python3 Scripts/prepare_accounts.py
       - name: Generate adaptive app icons
         timeout-minutes: 3
         run: swift Scripts/GenerateIcon.swift
@@ -91,7 +93,7 @@ jobs:
         timeout-minutes: 13
         run: |
           set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 26 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
+          python3 -u Scripts/run_tests.py --expected 38 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - name: Verify actual Files import and a checked box first
         timeout-minutes: 12
         run: |
@@ -101,7 +103,7 @@ jobs:
         timeout-minutes: 12
         run: |
           set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 10 --log simulator-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
+          python3 -u Scripts/run_tests.py --expected 11 --log simulator-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - name: Export UI screenshots
         if: always()
         run: |
@@ -171,12 +173,14 @@ jobs:
           mv verified/release release
           VERSION=$(python3 -c "import json; print(json.load(open('release/source.json'))['apps'][0]['version'])")
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Check account service before publishing
+        run: python3 Scripts/prepare_accounts.py --check-service
       - name: Publish verified release and matching SideStore sources
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$APP_VERSION"
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 y 27 · tablas verificadas por sus bordes · etiquetas de fila y columna · sin filas inventadas · análisis local · PDF sincronizado. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 y 27 · acceso con Google y correo · tutorial y documento de ejemplo · análisis privado automático · edición y exportación PDF. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
           mkdir release-check
           gh release download "$TAG" --pattern "FormScan-$APP_VERSION.ipa" --dir release-check
           python3 Scripts/release_source.py "release-check/FormScan-$APP_VERSION.ipa" --output release-check

@@ -8,6 +8,9 @@ settings:
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27*]': '$(inherited) IOS27_SDK'
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27*]': '$(inherited) IOS27_SDK'
 packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    exactVersion: 2.55.4
   ONNXRuntime:
     url: https://github.com/microsoft/onnxruntime-swift-package-manager
     exactVersion: 1.20.0
@@ -18,6 +21,8 @@ targets:
     deploymentTarget: '26.0'
     sources: [Sources, Models, Assets.xcassets]
     dependencies:
+      - package: Supabase
+        product: Auth
       - package: ONNXRuntime
         product: onnxruntime
     settings:
@@ -25,8 +30,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.polaca1.formscan
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Config/Info.plist
-        MARKETING_VERSION: '2.2.4'
-        CURRENT_PROJECT_VERSION: '28'
+        MARKETING_VERSION: '2.3.0'
+        CURRENT_PROJECT_VERSION: '29'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: '1,2'
   FormScanTests:

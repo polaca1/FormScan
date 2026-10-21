@@ -29,7 +29,7 @@
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
+		<false/>
 	</dict>
 	<key>UIFileSharingEnabled</key>
 	<true/>
@@ -47,6 +47,17 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.polaca1.formscan.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.polaca1.formscan</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
