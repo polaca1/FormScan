@@ -157,7 +157,9 @@ final class DocumentLibrary: ObservableObject {
     private func metadataURL(_ id: UUID) -> URL { directory.appendingPathComponent("\(id).json") }
     private func save(_ item: SavedDocument, pdf: PDFDocument, force: Bool = false) throws {
         let changed = documents.first(where: { $0.id == item.id }) != item
-        if !changed, !force, FileManager.default.fileExists(atPath: pdfURL(item.id).path), FileManager.default.fileExists(atPath: metadataURL(item.id).path) { return }
+        if !changed, !force,
+           (try? pdfURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+           (try? metadataURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { return }
         guard let data = pdf.dataRepresentation() else { throw FormScanError.saveFailed }
         try data.write(to: pdfURL(item.id), options: .atomic)
         try JSONEncoder().encode(item).write(to: metadataURL(item.id), options: .atomic)

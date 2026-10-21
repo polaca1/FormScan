@@ -200,8 +200,11 @@ final class FormScanUITests: XCTestCase {
         let email = app.textFields["accountEmail"]
         email.tap(); email.typeText("incorrecto\n")
         let password = app.secureTextFields["accountPassword"]
-        if password.isHittable { password.tap(); password.typeText("prueba123\n") }
-        if app.buttons["submitAccount"].isHittable { app.buttons["submitAccount"].tap() }
+        for _ in 0..<4 { if password.isHittable { break }; app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(password.isHittable); password.tap(); password.typeText("prueba123\n")
+        let submit = app.buttons["submitAccount"]
+        for _ in 0..<4 { if submit.isHittable { break }; app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(submit.isHittable); submit.tap()
         XCTAssertTrue(app.staticTexts["Introduce una dirección de correo válida."].waitForExistence(timeout: 5))
         if app.keyboards.firstMatch.exists { app.swipeUp() }
         let offline = app.buttons["continueOnDevice"]
