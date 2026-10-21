@@ -125,6 +125,7 @@ jobs:
           cp ModelAssets/ffdetr-mobile-int8.onnx release/
           cp Docs/Models.md release/Models.md
           cp Sources/Resources/ThirdPartyNotices.txt release/
+          python3 Scripts/check_production_package.py "release/FormScan-$VERSION.ipa"
           python3 Scripts/release_source.py "release/FormScan-$VERSION.ipa"
           python3 - <<'PY'
           import json, pathlib, re, shutil

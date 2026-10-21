@@ -82,18 +82,26 @@ final class NativeOAuthBrowser: NSObject, OAuthLaunching, ASWebAuthenticationPre
     private var session: ASWebAuthenticationSession?
     private var continuation: CheckedContinuation<URL, Error>?
     func authenticate(_ url: URL, scheme: String) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { [weak self] url, error in
-                Task { @MainActor in
-                    if let error { self?.finish(.failure(error)) }
-                    else if let url { self?.finish(.success(url)) }
-                    else { self?.finish(.failure(AccountIssue.invalidCallback)) }
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { [weak self] url, error in
+                    Task { @MainActor in
+                        if let error { self?.finish(.failure(error)) }
+                        else if let url { self?.finish(.success(url)) }
+                        else { self?.finish(.failure(AccountIssue.invalidCallback)) }
+                    }
                 }
+                self.session = session
+                session.presentationContextProvider = self
+                if !session.start() { finish(.failure(AccountIssue.unavailable)) }
             }
-            self.session = session
-            session.presentationContextProvider = self
-            if !session.start() { finish(.failure(AccountIssue.unavailable)) }
+        } onCancel: {
+            Task { @MainActor in
+                self.session?.cancel()
+                self.finish(.failure(CancellationError()))
+            }
         }
     }
     private func finish(_ result: Result<URL, Error>) {

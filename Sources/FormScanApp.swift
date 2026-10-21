@@ -63,7 +63,7 @@ struct LibraryView: View {
             }
             Tab("Ajustes", systemImage: "gearshape", value: AppSection.settings) {
                 NavigationStack {
-                    AccountSettingsView { tutorial = true }
+                    AccountSettingsView(tutorial: { tutorial = true }, beforeSignOut: { try library.close() })
                 }
             }
         }

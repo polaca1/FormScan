@@ -157,6 +157,8 @@ struct AccountPasswordView: View {
 struct AccountSettingsView: View {
     @EnvironmentObject private var account: AccountStore
     let tutorial: () -> Void
+    let beforeSignOut: () throws -> Void
+    @State private var saveError: String?
     @State private var showAccess = false
     @State private var showSignOut = false
     var body: some View {
@@ -181,8 +183,16 @@ struct AccountSettingsView: View {
         }.navigationTitle("Ajustes")
             .sheet(isPresented: $showAccess) { AccountAccessView(allowsDeviceAccess: false) }
             .confirmationDialog("¿Cerrar sesión?", isPresented: $showSignOut, titleVisibility: .visible) {
-                Button("Cerrar sesión", role: .destructive) { Task { await account.signOut() } }
+                Button("Cerrar sesión", role: .destructive) {
+                    do {
+                        try beforeSignOut()
+                        Task { await account.signOut() }
+                    } catch { saveError = "No se pudieron guardar los últimos cambios. Comprueba el espacio disponible y vuelve a intentarlo antes de cerrar sesión." }
+                }
             } message: { Text("Los documentos se conservarán en este dispositivo para cuando vuelvas a entrar en esta cuenta.") }
+            .alert("No se pudo guardar", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+                Button("Aceptar", role: .cancel) { saveError = nil }
+            } message: { Text(saveError ?? "") }
     }
 }
 

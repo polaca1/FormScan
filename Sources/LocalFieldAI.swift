@@ -3,6 +3,8 @@ import UIKit
 import PDFKit
 import OnnxRuntimeBindings
 
+enum AnalysisError: Error { case invalidOutput }
+
 struct DetectedField {
     var rect: CGRect
     var category: Int
@@ -93,12 +95,12 @@ enum LocalFieldAI {
     }
 
     private static func decodeDETR(_ outputs: [String: ORTValue], width: Int, height: Int, threshold: Float) throws -> [DetectedField] {
-        guard let boxes = outputs["dets"], let labels = outputs["labels"] else { throw ModelError.invalidDownload }
+        guard let boxes = outputs["dets"], let labels = outputs["labels"] else { throw AnalysisError.invalidOutput }
         let boxData = try boxes.tensorData() as Data
         let labelData = try labels.tensorData() as Data
         let values = boxData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         let scores = labelData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-        guard values.count == 1200, scores.count == 1200 else { throw ModelError.invalidDownload }
+        guard values.count == 1200, scores.count == 1200 else { throw AnalysisError.invalidOutput }
         var candidates: [DetectedField] = []
         for index in 0..<300 {
             let offset = index * 4
