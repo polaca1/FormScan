@@ -1,0 +1,55 @@
+name: Publish requested login preview IPA
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: 'Build containing the requested candidate IPA'
+        required: true
+        default: '39671344619'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve candidate source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" --jq .head_sha)
+          test "$SOURCE_SHA" = 'e8ef9c938cdd9d0be52aca17a5035bbbc0cc5c1c'
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: FormScan-candidate-IPA-iOS27
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify and publish the requested preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 Scripts/check_production_package.py candidate/FormScan-2.3.0.ipa
+          mkdir preview
+          mv candidate/FormScan-2.3.0.ipa preview/FormScan-2.3.0-login-preview.ipa
+          cat > preview-notes.md <<'NOTES'
+          IPA de prueba solicitada para probar el inicio de sesión con Google o correo, registro, recuperación y cambio de contraseña, tutorial y documento de ejemplo.
+
+          Compilada con Xcode 27 para iOS 26 o posterior; también compila con Xcode 26.6. Se ha comprobado el contenido del paquete. Las pruebas siguen abiertas: hay una discrepancia en la prueba del mensaje de acceso rechazado y la interfaz aún no ha completado su verificación. No es la entrega estable de la fuente.
+
+          Esta versión guarda los documentos en el dispositivo. El guardado en la nube todavía no está incluido. Actualiza sobre la instalación existente mediante SideStore; no es necesario borrar la app.
+          NOTES
+          gh release create v2.3.0-login-preview preview/*.ipa --target "$SOURCE_SHA" --title 'FormScan 2.3.0 — Prueba de inicio de sesión' --notes-file preview-notes.md --prerelease --latest=false
+          mkdir downloaded
+          gh release download v2.3.0-login-preview --pattern '*.ipa' --dir downloaded
+          cmp preview/FormScan-2.3.0-login-preview.ipa downloaded/FormScan-2.3.0-login-preview.ipa
+          sha256sum downloaded/FormScan-2.3.0-login-preview.ipa
