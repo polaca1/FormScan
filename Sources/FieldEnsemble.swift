@@ -52,7 +52,7 @@ enum FieldEnsemble {
                 else { clusters.append([Vote(model: model, field: field)]) }
             }
         }
-        return clusters.compactMap { cluster in
+        let fused = clusters.compactMap { cluster -> DetectedField? in
             // FP32 is the preferred Nano representative when both have completed.
             let nano = cluster.first { $0.model == .nano } ?? cluster.first { $0.model == .compact }
             let detailed = cluster.first { $0.model == .detailed }
@@ -65,6 +65,17 @@ enum FieldEnsemble {
             // Preserve a useful single-family result; another model not finding
             // a field is not proof that it does not exist. No synthetic confidence boost.
             return nano?.field ?? detailed?.field
+        }
+        return fused.filter { field in
+            guard field.category != 1 else { return true }
+            return !fused.contains { check in
+                guard check.category == 1, check.rect.height > 0,
+                      (0.6...1.6).contains(check.rect.width / check.rect.height) else { return false }
+                let overlap = check.rect.intersection(field.rect).area
+                let union = check.rect.area + field.rect.area - overlap
+                let ratio = max(check.rect.area, field.rect.area) / max(1, min(check.rect.area, field.rect.area))
+                return ratio < 2 && union > 0 && overlap / union > 0.6
+            }
         }.sorted { $0.rect.minY < $1.rect.minY }
     }
 }

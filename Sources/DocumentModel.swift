@@ -20,12 +20,13 @@ struct FormEntry: Identifiable, Codable, Equatable {
     var text = ""
     var checked = false
     var checkbox = false
+    var recoveredText: String? = nil
     var widgetName: String?
     var origin: String?
     var completed: Bool { checkbox ? checked : !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
-struct SavedDocument: Identifiable, Codable {
+struct SavedDocument: Identifiable, Codable, Equatable {
     var id = UUID()
     var title: String
     var modified = Date()
@@ -105,7 +106,7 @@ final class DocumentLibrary: ObservableObject {
 
 @MainActor
 final class DocumentSession: ObservableObject {
-    static let analysisVersion = 3
+    static let analysisVersion = 4
     @Published var item: SavedDocument
     let document: PDFDocument
     @Published var revision = 0
@@ -135,7 +136,8 @@ final class DocumentSession: ObservableObject {
 
     init(item: SavedDocument, document: PDFDocument, save: @escaping (SavedDocument, PDFDocument) throws -> Void) {
         self.item = item; self.document = document; self.save = save
-        PDFFormWriter.synchronize(item.fields, in: document)
+        self.item.fields = FieldReconciliation.repair(item.fields)
+        PDFFormWriter.synchronize(self.item.fields, in: document)
     }
     func update(_ field: FormEntry) {
         guard let index = item.fields.firstIndex(where: { $0.id == field.id }) else { return }
@@ -270,6 +272,7 @@ final class DocumentSession: ObservableObject {
                                 $0.page == index && $0.rect.intersection(rect).area > min($0.rect.area, rect.area) * 0.5
                             }) else { continue }
                             let checkbox = detection.category == 1
+                            guard !FieldReconciliation.conflictsWithExplicitType(rect: rect, checkbox: checkbox, page: index, fields: item.fields) else { continue }
                             let table = tableFields.first { $0.rect == detection.rect }
                             let label = table?.label ?? FieldLabels.label(for: detection.rect, checkbox: checkbox, lines: lines)
                             if let existing = item.fields.firstIndex(where: {
@@ -295,6 +298,7 @@ final class DocumentSession: ObservableObject {
                         item.fields.removeAll { field in
                             !retained.contains(field.id) && provisional[field.id] == field && !editedDuringAnalysis.contains(field.id)
                         }
+                        item.fields = FieldReconciliation.repair(item.fields)
                         item.fields.sort {
                             if $0.page != $1.page { return $0.page < $1.page }
                             return abs($0.rect.maxY - $1.rect.maxY) < 4 ? $0.rect.minX < $1.rect.minX : $0.rect.maxY > $1.rect.maxY

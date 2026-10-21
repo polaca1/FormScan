@@ -236,6 +236,11 @@ struct FieldInspector: View {
                         if field.checkbox { Toggle("Marcada", isOn: binding(\.checked, fallback: false)) }
                         else { TextField("Contenido", text: binding(\.text, fallback: ""), axis: .vertical).lineLimit(1...8) }
                     }
+                    if let recovered = field.recoveredText, !recovered.isEmpty {
+                        Section("Texto conservado") {
+                            Text(recovered).textSelection(.enabled)
+                        } footer: { Text("Este texto se escribió en un campo duplicado sobre la casilla. Se conserva aquí y no se imprime dentro de ella.") }
+                    }
                     Section("Posición y tamaño") {
                         LabeledContent("Página", value: "\(field.page + 1)")
                         Button("Colocar en el documento", systemImage: "hand.tap") { place() }
