@@ -56,6 +56,8 @@ final class DocumentWorkspace: ObservableObject {
 struct AccountRootView: View {
     @EnvironmentObject private var account: AccountStore
     @StateObject private var workspace = DocumentWorkspace()
+    @StateObject private var cloud = DocumentCloudController()
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         Group {
             if account.restoring {
@@ -80,7 +82,20 @@ struct AccountRootView: View {
                 } else { ProgressView("Abriendo documentos…") }
             } else { AccountAccessView() }
         }
-        .task(id: account.workspaceKey) { workspace.activate(account.workspaceKey) }
+        .environmentObject(cloud)
+        .task(id: account.workspaceKey) {
+            cloud.disconnect()
+            workspace.activate(account.workspaceKey)
+            if let owner = account.user?.id, let library = workspace.library,
+               workspace.key == owner.uuidString, let configuration = AccountConfiguration.load() {
+                cloud.connect(library: library, api: SupabaseDocumentCloud(owner: owner, configuration: configuration) {
+                    try await account.cloudAccessToken(for: owner)
+                })
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { cloud.synchronize() }
+        }
         .onOpenURL { url in Task { await account.handleCallback(url) } }
     }
 }

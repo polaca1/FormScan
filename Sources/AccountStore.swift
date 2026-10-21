@@ -246,6 +246,12 @@ final class AccountStore: ObservableObject {
             user = AccountIdentity(session.user); recovering = recovery
         }
     }
+    func cloudAccessToken(for owner: UUID) async throws -> String {
+        guard let client, user?.id == owner else { throw DocumentCloudIssue.session }
+        let session = try await client.session
+        guard session.user.id == owner, user?.id == owner else { throw DocumentCloudIssue.session }
+        return session.accessToken
+    }
     func signOut() async {
         guard !busy else { return }; busy = true; clearMessages()
         defer { busy = false }
