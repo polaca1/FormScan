@@ -7,11 +7,11 @@ import PDFKit
 @MainActor final class DocumentCloudUIFixture: DocumentCloudAPI {
     let owner = UUID(uuidString: "00000000-0000-0000-0000-000000000099")!
     private let directory: URL
-    private var failOnce: Bool
+    private let offline: Bool
     init() throws {
         let arguments = ProcessInfo.processInfo.arguments
         directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("UITestCloudServer")
-        failOnce = arguments.contains("-ui-testing-cloud-error")
+        offline = arguments.contains("-ui-testing-cloud-error")
         if arguments.contains("-ui-testing") { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("record.json").path) {
@@ -31,7 +31,7 @@ import PDFKit
     private func record() throws -> CloudRecord { try JSONDecoder().decode(CloudRecord.self, from: Data(contentsOf: directory.appendingPathComponent("record.json"))) }
     private func store(_ record: CloudRecord) throws { try JSONEncoder().encode(record).write(to: directory.appendingPathComponent("record.json"), options: .atomic) }
     func catalogue() async throws -> [CloudRecord] {
-        if failOnce { failOnce = false; throw DocumentCloudIssue.unavailable }
+        if offline { throw DocumentCloudIssue.unavailable }
         return [try record()]
     }
     func download(_ record: CloudRecord) async throws -> Data { try Data(contentsOf: file(record.objectKey!)) }

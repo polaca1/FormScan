@@ -352,7 +352,9 @@ final class FormScanUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 15), .completed)
         app.terminate()
         // Remove only the local library. The separate simulated account service
-        // persists its own files and deliberately fails the first catalogue call.
+        // persists its own files and remains offline for this launch, including
+        // automatic foreground retries. A one-shot failure can recover before
+        // the UI has time to inspect the error.
         app.launchArguments = ["-ui-testing-reopen", "-ui-testing-cloud", "-ui-testing-cloud-new-install", "-ui-testing-cloud-error"]
         app.launch()
         let retry = app.buttons["Reintentar"]
@@ -360,6 +362,13 @@ final class FormScanUITests: XCTestCase {
         XCTAssertFalse(recovered.exists, "A network failure must not be treated as an empty account")
         screenshot("32-cloud-retry")
         retry.tap()
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertFalse(recovered.exists, "Retrying while offline must keep the local library intact")
+        app.terminate()
+        // Reconnect the isolated service without clearing its saved documents
+        // or the installation's pending state.
+        app.launchArguments = ["-ui-testing-reopen", "-ui-testing-cloud"]
+        app.launch()
         XCTAssertTrue(recovered.waitForExistence(timeout: 15)); recovered.tap()
         XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.buttons["Formulario"].tap()
         let restoredName = app.textViews["field-Nombre completo"].exists ? app.textViews["field-Nombre completo"] : app.textFields["field-Nombre completo"]
