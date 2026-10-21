@@ -171,6 +171,30 @@ private actor AccountTransport {
         workspace.activate("guest"); XCTAssertEqual(workspace.library?.documents.count, 0)
         workspace.activate(first); XCTAssertEqual(workspace.library?.documents.first?.id, id)
     }
+    func testFailedLibraryCloseKeepsAllSessionsEditableForRetry() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = DocumentLibrary(directory: directory)
+        let first = try library.add(ExampleDocument.make(), title: "Primero")
+        let second = try library.add(ExampleDocument.make(), title: "Segundo")
+        let sessions = try [first, second].map { try XCTUnwrap(library.session(id: $0)) }
+        let blocked = directory.appendingPathComponent("\(second).json")
+        let original = try Data(contentsOf: blocked)
+        try FileManager.default.removeItem(at: blocked)
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try library.close())
+        try FileManager.default.removeItem(at: blocked)
+        try original.write(to: blocked)
+        for session in sessions {
+            var field = try XCTUnwrap(session.item.fields.first)
+            field.text = "Editado después del fallo"; session.update(field); session.flush()
+        }
+        let restored = DocumentLibrary(directory: directory)
+        for id in [first, second] {
+            XCTAssertEqual(restored.session(id: id)?.item.fields.first?.text, "Editado después del fallo")
+        }
+        try library.close()
+    }
     func testInvalidWorkspaceNeverShowsPreviousAccountDocuments() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

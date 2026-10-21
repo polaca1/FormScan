@@ -58,6 +58,7 @@ final class DocumentLibrary: ObservableObject {
 
     func close() throws {
         for session in sessions.values { try session.prepareForClose() }
+        for session in sessions.values { session.invalidate() }
         sessions.removeAll(); thumbnails.removeAll()
     }
     func add(_ pdf: PDFDocument, title: String) throws -> UUID {
@@ -189,7 +190,6 @@ final class DocumentSession: ObservableObject {
     func prepareForClose() throws {
         pendingSave?.cancel(); analysisTask?.cancel()
         try save(item, document)
-        invalidate()
     }
     func export() throws -> URL {
         PDFFormWriter.synchronize(item.fields, in: document)
