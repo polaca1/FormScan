@@ -237,9 +237,9 @@ struct FieldInspector: View {
                         else { TextField("Contenido", text: binding(\.text, fallback: ""), axis: .vertical).lineLimit(1...8) }
                     }
                     if let recovered = field.recoveredText, !recovered.isEmpty {
-                        Section("Texto conservado") {
+                        Section {
                             Text(recovered).textSelection(.enabled)
-                        } footer: { Text("Este texto se escribió en un campo duplicado sobre la casilla. Se conserva aquí y no se imprime dentro de ella.") }
+                        } header: { Text("Texto conservado") } footer: { Text("Este texto se escribió en un campo duplicado sobre la casilla. Se conserva aquí y no se imprime dentro de ella.") }
                     }
                     Section("Posición y tamaño") {
                         LabeledContent("Página", value: "\(field.page + 1)")
