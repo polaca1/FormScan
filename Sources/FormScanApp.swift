@@ -46,11 +46,13 @@ struct LibraryView: View {
                 NavigationStack {
                     StartView(scan: startScanner, importFile: presentImporter, example: openExample)
                         .navigationTitle("Inicio")
+                        .modifier(DocumentCloudInset())
                 }
             }
             Tab("Documentos", systemImage: "folder", value: AppSection.documents) {
                 NavigationStack {
                     AllDocumentsView(library: library) { presentDocument($0) }
+                        .modifier(DocumentCloudInset())
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Menu("Añadir documento", systemImage: "plus") {
@@ -65,6 +67,7 @@ struct LibraryView: View {
             Tab("Ajustes", systemImage: "gearshape", value: AppSection.settings) {
                 NavigationStack {
                     AccountSettingsView(tutorial: { tutorial = true }, beforeSignOut: { try library.close() })
+                        .modifier(DocumentCloudInset())
                 }
             }
         }
@@ -72,15 +75,6 @@ struct LibraryView: View {
 
     var body: some View {
         navigation
-        #if DEBUG
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud") {
-                Text(cloud.error != nil ? "Pendiente" : cloud.busy || cloud.hasPendingChanges ? "Guardando" : "Guardado")
-                    .font(.caption2).accessibilityIdentifier("cloudFixtureState")
-            }
-        }
-        #endif
-        .safeAreaInset(edge: .bottom, spacing: 0) { DocumentCloudBanner() }
         .fullScreenCover(item: $openedDocument, onDismiss: {
             library.activeDocumentID = nil; cloud.synchronize()
         }) { destination in

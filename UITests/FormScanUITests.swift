@@ -363,6 +363,12 @@ final class FormScanUITests: XCTestCase {
         let retry = app.buttons["Reintentar"]
         XCTAssertTrue(retry.waitForExistence(timeout: 15))
         XCTAssertFalse(recovered.exists, "A network failure must not be treated as an empty account")
+        let notice = app.descendants(matching: .any)["documentCloudNotice"].firstMatch
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        let tabs = [app.tabBars.buttons["Inicio"], app.tabBars.buttons["Documentos"], app.tabBars.buttons["Ajustes"]]
+        let tabTop = tabs.map { $0.frame.minY }.min()!
+        XCTAssertLessThanOrEqual(notice.frame.maxY, tabTop + 1, "The connection notice must stay above the native tab controls")
+        for tab in tabs { XCTAssertTrue(tab.isHittable, "The warning must leave \(tab.label) accessible") }
         screenshot("32-cloud-retry")
         retry.tap()
         XCTAssertTrue(retry.waitForExistence(timeout: 5))

@@ -1,5 +1,24 @@
 import SwiftUI
 
+/// Apply inside each navigation destination so the native tab bar's safe area
+/// is included. An inset on TabView itself can cover its floating controls.
+struct DocumentCloudInset: ViewModifier {
+    @EnvironmentObject private var cloud: DocumentCloudController
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud") {
+                    Text(cloud.error != nil ? "Pendiente" : cloud.busy || cloud.hasPendingChanges ? "Guardando" : "Guardado")
+                        .font(.caption2).accessibilityIdentifier("cloudFixtureState")
+                }
+                #endif
+                DocumentCloudBanner()
+            }
+        }
+    }
+}
+
 /// Normal successful saves are silent. Only failures and preserved conflicts
 /// occupy space; no server, model or synchronization controls appear in settings.
 struct DocumentCloudBanner: View {
