@@ -200,13 +200,16 @@ final class FormScanUITests: XCTestCase {
         let email = app.textFields["accountEmail"]
         email.tap(); email.typeText("incorrecto\n")
         let password = app.secureTextFields["accountPassword"]
-        for _ in 0..<4 { if password.isHittable { break }; app.scrollViews.firstMatch.swipeUp() }
-        XCTAssertTrue(password.isHittable); password.tap(); password.typeText("prueba123\n")
-        let submit = app.buttons["submitAccount"]
-        for _ in 0..<4 { if submit.isHittable { break }; app.scrollViews.firstMatch.swipeUp() }
-        XCTAssertTrue(submit.isHittable); submit.tap()
-        XCTAssertTrue(app.staticTexts["Introduce una dirección de correo válida."].waitForExistence(timeout: 5))
-        if app.keyboards.firstMatch.exists { app.swipeUp() }
+        let passwordVisible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: password)
+        XCTAssertEqual(XCTWaiter.wait(for: [passwordVisible], timeout: 8), .completed)
+        password.tap(); password.typeText("prueba123\n")
+        let validation = app.staticTexts["Introduce una dirección de correo válida."]
+        XCTAssertTrue(validation.waitForExistence(timeout: 8))
+        let messageVisible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: validation)
+        XCTAssertEqual(XCTWaiter.wait(for: [messageVisible], timeout: 5), .completed)
+        let keyboardClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboardClosed], timeout: 5), .completed)
+        screenshot("34-account-validation")
         let offline = app.buttons["continueOnDevice"]
         for _ in 0..<5 { if offline.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(offline.isHittable); offline.tap()
@@ -360,6 +363,12 @@ final class FormScanUITests: XCTestCase {
         let retry = app.buttons["Reintentar"]
         XCTAssertTrue(retry.waitForExistence(timeout: 15))
         XCTAssertFalse(recovered.exists, "A network failure must not be treated as an empty account")
+        let notice = app.descendants(matching: .any)["documentCloudNotice"].firstMatch
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        let tabs = [app.tabBars.buttons["Inicio"], app.tabBars.buttons["Documentos"], app.tabBars.buttons["Ajustes"]]
+        let tabTop = tabs.map { $0.frame.minY }.min()!
+        XCTAssertLessThanOrEqual(notice.frame.maxY, tabTop + 1, "The connection notice must stay above the native tab controls")
+        for tab in tabs { XCTAssertTrue(tab.isHittable, "The warning must leave \(tab.label) accessible") }
         screenshot("32-cloud-retry")
         retry.tap()
         XCTAssertTrue(retry.waitForExistence(timeout: 5))

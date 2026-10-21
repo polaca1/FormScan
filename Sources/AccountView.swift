@@ -7,6 +7,7 @@ private enum AccessMode: String, CaseIterable {
 struct AccountAccessView: View {
     @EnvironmentObject private var account: AccountStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var allowsDeviceAccess = true
     @State private var mode = AccessMode.signIn
     @State private var email = ""
@@ -16,86 +17,100 @@ struct AccountAccessView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Image(systemName: "text.viewfinder").font(.system(size: 64, weight: .light))
-                            .foregroundStyle(.blue).accessibilityHidden(true)
-                        Text("Menos papel.\nMás posibilidades.").font(.largeTitle.bold()).tracking(-1)
-                        Text("Escanea, completa y comparte. Empieza con tu cuenta o prueba un documento de ejemplo.")
-                            .font(.title3).foregroundStyle(.secondary)
-                    }.padding(.top, 24)
-                    if mode != .reset {
-                        Button {
-                            focused = nil
-                            Task { await account.signInWithGoogle() }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image("GoogleLogo").resizable().scaledToFit().frame(width: 20, height: 20)
-                                    .accessibilityHidden(true)
-                                Text("Continuar con Google").foregroundStyle(.primary)
-                            }.font(.headline).frame(maxWidth: .infinity, minHeight: 48)
-                        }.buttonStyle(.glass).accessibilityIdentifier("googleSignIn")
-                        HStack { Rectangle().frame(height: 0.5); Text("o con tu correo").font(.footnote).fixedSize(); Rectangle().frame(height: 0.5) }
-                            .foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(mode.rawValue).font(.title2.bold())
-                        VStack(spacing: 0) {
-                            TextField("Correo electrónico", text: $email)
-                                .textContentType(.emailAddress).keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                                .focused($focused, equals: 0).submitLabel(mode == .reset ? .go : .next)
-                                .onSubmit { if mode == .reset { submit() } else { focused = 1 } }
-                                .padding(16).accessibilityIdentifier("accountEmail")
-                            if mode != .reset {
-                                Divider().padding(.leading, 16)
-                                SecureField("Contraseña", text: $password)
-                                    .textContentType(mode == .signUp ? .newPassword : .password)
-                                    .focused($focused, equals: 1).submitLabel(mode == .signUp ? .next : .go)
-                                    .onSubmit { if mode == .signUp { focused = 2 } else { submit() } }
-                                    .padding(16).accessibilityIdentifier("accountPassword")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Image(systemName: "text.viewfinder").font(.system(size: 64, weight: .light))
+                                .foregroundStyle(.blue).accessibilityHidden(true)
+                            Text("Menos papel.\nMás posibilidades.").font(.largeTitle.bold()).tracking(-1)
+                            Text("Escanea, completa y comparte. Empieza con tu cuenta o prueba un documento de ejemplo.")
+                                .font(.title3).foregroundStyle(.secondary)
+                        }.padding(.top, 24)
+                        if mode != .reset {
+                            Button {
+                                focused = nil
+                                Task { await account.signInWithGoogle() }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image("GoogleLogo").resizable().scaledToFit().frame(width: 20, height: 20)
+                                        .accessibilityHidden(true)
+                                    Text("Continuar con Google").foregroundStyle(.primary)
+                                }.font(.headline).frame(maxWidth: .infinity, minHeight: 48)
+                            }.buttonStyle(.glass).accessibilityIdentifier("googleSignIn")
+                            HStack { Rectangle().frame(height: 0.5); Text("o con tu correo").font(.footnote).fixedSize(); Rectangle().frame(height: 0.5) }
+                                .foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(mode.rawValue).font(.title2.bold())
+                            VStack(spacing: 0) {
+                                TextField("Correo electrónico", text: $email)
+                                    .textContentType(.emailAddress).keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                                    .focused($focused, equals: 0).submitLabel(mode == .reset ? .go : .next)
+                                    .onSubmit { if mode == .reset { submit() } else { focused = 1 } }
+                                    .padding(16).accessibilityIdentifier("accountEmail").id(0)
+                                if mode != .reset {
+                                    Divider().padding(.leading, 16)
+                                    SecureField("Contraseña", text: $password)
+                                        .textContentType(mode == .signUp ? .newPassword : .password)
+                                        .focused($focused, equals: 1).submitLabel(mode == .signUp ? .next : .go)
+                                        .onSubmit { if mode == .signUp { focused = 2 } else { submit() } }
+                                        .padding(16).accessibilityIdentifier("accountPassword").id(1)
+                                }
+                                if mode == .signUp {
+                                    Divider().padding(.leading, 16)
+                                    SecureField("Repite la contraseña", text: $confirmation).textContentType(.newPassword)
+                                        .focused($focused, equals: 2).submitLabel(.go).onSubmit(submit)
+                                        .padding(16).accessibilityIdentifier("accountConfirmation").id(2)
+                                }
+                            }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+                            if mode == .signUp { Text("Usa al menos 8 caracteres. Te enviaremos un correo para confirmar la cuenta.").font(.footnote).foregroundStyle(.secondary) }
+                            AccountMessages().id("accountFeedback")
+                            Button(action: submit) {
+                                HStack {
+                                    if account.busy { ProgressView().tint(.white) }
+                                    Text(mode == .reset ? "Enviar enlace" : mode.rawValue)
+                                }.font(.headline).frame(maxWidth: .infinity, minHeight: 48)
+                            }.buttonStyle(.glassProminent).accessibilityIdentifier("submitAccount")
+                            if mode == .signIn {
+                                Button("¿Olvidaste tu contraseña?") { changeMode(.reset) }.font(.subheadline)
                             }
-                            if mode == .signUp {
-                                Divider().padding(.leading, 16)
-                                SecureField("Repite la contraseña", text: $confirmation).textContentType(.newPassword)
-                                    .focused($focused, equals: 2).submitLabel(.go).onSubmit(submit)
-                                    .padding(16).accessibilityIdentifier("accountConfirmation")
+                        }
+                        VStack(spacing: 18) {
+                            Button(mode == .signIn ? "Crear una cuenta" : "Ya tengo una cuenta") {
+                                changeMode(mode == .signIn ? .signUp : .signIn)
+                            }.accessibilityIdentifier("changeAccessMode")
+                            if allowsDeviceAccess {
+                                Button("Continuar sin cuenta") { account.continueOnDevice() }
+                                    .foregroundStyle(.secondary).accessibilityIdentifier("continueOnDevice")
                             }
-                        }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-                        if mode == .signUp { Text("Usa al menos 8 caracteres. Te enviaremos un correo para confirmar la cuenta.").font(.footnote).foregroundStyle(.secondary) }
-                        AccountMessages()
-                        Button(action: submit) {
-                            HStack {
-                                if account.busy { ProgressView().tint(.white) }
-                                Text(mode == .reset ? "Enviar enlace" : mode.rawValue)
-                            }.font(.headline).frame(maxWidth: .infinity, minHeight: 48)
-                        }.buttonStyle(.glassProminent).accessibilityIdentifier("submitAccount")
-                        if mode == .signIn {
-                            Button("¿Olvidaste tu contraseña?") { changeMode(.reset) }.font(.subheadline)
+                            Text("El análisis se hace en tu dispositivo. Con una cuenta, tus documentos se guardan de forma privada y puedes recuperarlos al volver a entrar.")
+                                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        }.frame(maxWidth: .infinity)
+                    }.frame(maxWidth: 500).padding(28).frame(maxWidth: .infinity)
+                }.background(Color(uiColor: .systemGroupedBackground))
+                    .scrollDismissesKeyboard(.interactively)
+                    .navigationTitle("FormScan").navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        if !allowsDeviceAccess {
+                            ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } }
                         }
                     }
-                    VStack(spacing: 18) {
-                        Button(mode == .signIn ? "Crear una cuenta" : "Ya tengo una cuenta") {
-                            changeMode(mode == .signIn ? .signUp : .signIn)
-                        }.accessibilityIdentifier("changeAccessMode")
-                        if allowsDeviceAccess {
-                            Button("Continuar sin cuenta") { account.continueOnDevice() }
-                                .foregroundStyle(.secondary).accessibilityIdentifier("continueOnDevice")
+                    .disabled(account.busy)
+                    .onChange(of: focused) { _, field in
+                        guard let field else { return }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                            proxy.scrollTo(field, anchor: .center)
                         }
-                        Text("El análisis se hace en tu dispositivo. Con una cuenta, tus documentos se guardan de forma privada y puedes recuperarlos al volver a entrar.")
-                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }.frame(maxWidth: .infinity)
-                }.frame(maxWidth: 500).padding(28).frame(maxWidth: .infinity)
-            }.background(Color(uiColor: .systemGroupedBackground))
-                .scrollDismissesKeyboard(.interactively)
-                .navigationTitle("FormScan").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    if !allowsDeviceAccess {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } }
                     }
-                }
-                .disabled(account.busy)
+                    .onChange(of: account.error) { _, message in
+                        guard message != nil else { return }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                            proxy.scrollTo("accountFeedback", anchor: .center)
+                        }
+                    }
+            }
         }.onChange(of: account.user) { _, user in if user != nil { dismiss() } }
     }
     private func changeMode(_ mode: AccessMode) {
@@ -103,12 +118,12 @@ struct AccountAccessView: View {
     }
     private func submit() {
         guard !account.busy else { return }
+        focused = nil
         do {
             _ = try AccountStore.email(email)
             if mode == .signUp { try AccountStore.password(password, confirmation: confirmation) }
             if mode == .signIn && password.isEmpty { throw AccountIssue.weakPassword }
         } catch { account.error = error.localizedDescription; return }
-        focused = nil
         Task {
             switch mode {
             case .signIn: await account.signIn(email: email, password: password)
