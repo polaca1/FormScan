@@ -29,7 +29,7 @@ private actor AccountTransport {
         else if request.url!.path.hasSuffix("/recover") || request.url!.path.hasSuffix("/logout") { body = [:] }
         else if request.url!.path.hasSuffix("/user") || mode == .confirmation { body = user }
         else { body = ["access_token": "fixture-access", "refresh_token": "fixture-refresh", "token_type": "bearer", "expires_in": 3600, "expires_at": Date().timeIntervalSince1970 + 3600, "user": user] }
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json", "X-Supabase-Api-Version": "2024-01-01"])!
         return (try JSONSerialization.data(withJSONObject: body), response)
     }
 }
