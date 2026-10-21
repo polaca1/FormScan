@@ -39,7 +39,10 @@ struct SavedDocument: Identifiable, Codable, Equatable {
 @MainActor
 final class DocumentLibrary: ObservableObject {
     @Published private(set) var documents: [SavedDocument] = []
-    private let directory: URL
+    let directory: URL
+    @Published var error: String?
+    var didChange: (() -> Void)?
+    var activeDocumentID: UUID?
     private var sessions: [UUID: DocumentSession] = [:]
     private var thumbnails: [UUID: UIImage] = [:]
 
@@ -51,7 +54,7 @@ final class DocumentLibrary: ObservableObject {
         if reset { try? FileManager.default.removeItem(at: self.directory) }
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         let urls = (try? FileManager.default.contentsOfDirectory(at: self.directory, includingPropertiesForKeys: nil)) ?? []
-        documents = urls.filter { $0.pathExtension == "json" }.compactMap {
+        documents = urls.filter { $0.pathExtension == "json" && !$0.lastPathComponent.hasPrefix(".") }.compactMap {
             guard let data = try? Data(contentsOf: $0) else { return nil }
             return try? JSONDecoder().decode(SavedDocument.self, from: data)
         }.sorted { $0.modified > $1.modified }
@@ -87,20 +90,82 @@ final class DocumentLibrary: ObservableObject {
         return image
     }
     func delete(_ item: SavedDocument) {
-        sessions[item.id]?.invalidate()
-        try? FileManager.default.removeItem(at: pdfURL(item.id))
-        try? FileManager.default.removeItem(at: metadataURL(item.id))
-        sessions[item.id] = nil; thumbnails[item.id] = nil
-        documents.removeAll { $0.id == item.id }
+        do {
+            var requests = try deletionRequests()
+            requests[item.id.uuidString] = try DocumentFingerprint.of(sessions[item.id]?.item ?? item)
+            try writeDeletionRequests(requests)
+            try removeLocalVersion(item.id)
+            didChange?()
+        } catch { self.error = FormScanError.saveFailed.localizedDescription }
+    }
+    func deletionRequests() throws -> [String: String] {
+        let url = directory.appendingPathComponent(".cloud-deletions.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
+        let requests = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+        guard requests.keys.allSatisfy({ UUID(uuidString: $0) != nil }) else { throw DocumentCloudIssue.localState }
+        return requests
+    }
+    private func writeDeletionRequests(_ requests: [String: String]) throws {
+        try JSONEncoder().encode(requests).write(to: directory.appendingPathComponent(".cloud-deletions.json"), options: .atomic)
+    }
+    func clearDeletionRequest(_ id: UUID) throws {
+        var requests = try deletionRequests(); requests[id.uuidString] = nil
+        try writeDeletionRequests(requests)
+    }
+    func removeLocalVersion(_ id: UUID) throws {
+        sessions[id]?.invalidate(); sessions[id] = nil; thumbnails[id] = nil
+        for url in [pdfURL(id), metadataURL(id)] where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        documents.removeAll { $0.id == id }
+    }
+    func flushForCloud() throws {
+        for session in sessions.values { try session.persistNow() }
+    }
+    func hasLocalPDF(_ id: UUID) -> Bool { FileManager.default.fileExists(atPath: pdfURL(id).path) }
+    func cloudSnapshot(_ id: UUID) throws -> CloudLocalSnapshot? {
+        guard var item = documents.first(where: { $0.id == id }) else { return nil }
+        if let session = sessions[id] {
+            try session.persistNow(); item = session.item
+        } else {
+            let repaired = FieldReconciliation.repair(item.fields)
+            if repaired != item.fields {
+                guard let pdf = PDFDocument(url: pdfURL(id)) else { throw DocumentCloudIssue.invalidDocument }
+                item.fields = repaired; PDFFormWriter.synchronize(repaired, in: pdf); try save(item, pdf: pdf)
+            }
+        }
+        return CloudLocalSnapshot(item: item, pdf: try Data(contentsOf: pdfURL(id)))
+    }
+    func installCloud(_ record: CloudRecord, pdf data: Data) throws {
+        guard activeDocumentID != record.id, (try deletionRequests())[record.id.uuidString] == nil,
+              let pdf = PDFDocument(data: data), !pdf.isLocked,
+              pdf.pageCount > 0, pdf.pageCount == record.metadata.pageCount,
+              record.metadata.id == record.id,
+              Set(record.metadata.fields.map(\.id)).count == record.metadata.fields.count,
+              record.metadata.fields.allSatisfy({ $0.page >= 0 && $0.page < pdf.pageCount && $0.rect.minX.isFinite && $0.rect.minY.isFinite && $0.rect.width.isFinite && $0.rect.height.isFinite }) else { throw DocumentCloudIssue.invalidDocument }
+        sessions[record.id]?.invalidate(); sessions[record.id] = nil
+        var item = record.metadata; item.fields = FieldReconciliation.repair(item.fields)
+        PDFFormWriter.synchronize(item.fields, in: pdf)
+        try save(item, pdf: pdf, force: true)
+    }
+    func preserveConflict(_ id: UUID) throws {
+        guard let snapshot = try cloudSnapshot(id), let pdf = PDFDocument(data: snapshot.pdf) else { return }
+        var copy = snapshot.item; copy.id = UUID(); copy.title += " (copia conservada)"; copy.modified = Date()
+        try save(copy, pdf: pdf)
     }
     private func pdfURL(_ id: UUID) -> URL { directory.appendingPathComponent("\(id).pdf") }
     private func metadataURL(_ id: UUID) -> URL { directory.appendingPathComponent("\(id).json") }
-    private func save(_ item: SavedDocument, pdf: PDFDocument) throws {
+    private func save(_ item: SavedDocument, pdf: PDFDocument, force: Bool = false) throws {
+        let changed = documents.first(where: { $0.id == item.id }) != item
+        if !changed, !force,
+           (try? pdfURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+           (try? metadataURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { return }
         guard let data = pdf.dataRepresentation() else { throw FormScanError.saveFailed }
         try data.write(to: pdfURL(item.id), options: .atomic)
         try JSONEncoder().encode(item).write(to: metadataURL(item.id), options: .atomic)
         documents.removeAll { $0.id == item.id }; documents.insert(item, at: 0)
         thumbnails[item.id] = nil
+        if changed { didChange?() }
     }
 }
 
@@ -189,9 +254,13 @@ final class DocumentSession: ObservableObject {
         pendingSave?.cancel()
         do { try save(item, document) } catch { self.error = error.localizedDescription }
     }
-    func prepareForClose() throws {
-        pendingSave?.cancel(); analysisTask?.cancel()
+    func persistNow() throws {
+        pendingSave?.cancel()
         try save(item, document)
+    }
+    func prepareForClose() throws {
+        analysisTask?.cancel()
+        try persistNow()
     }
     func export() throws -> URL {
         PDFFormWriter.synchronize(item.fields, in: document)

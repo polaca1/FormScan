@@ -85,6 +85,7 @@ struct EditorView: View {
                 }.padding().background(.bar)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { DocumentCloudBanner() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Cerrar", systemImage: "xmark") { session.flush(); dismiss() }

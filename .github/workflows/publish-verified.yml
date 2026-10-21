@@ -3,17 +3,20 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Run containing the verified SDK 27 candidate
+        description: Successful complete iOS 26/27 and backend verification run
         required: true
       commit_sha:
-        description: Exact source commit of the candidate and its tests
+        description: Exact source commit of the verified package and tests
         required: true
       version:
-        description: Expected version inside the IPA
+        description: Expected version inside the verified IPA
         required: true
 permissions:
   actions: read
   contents: write
+concurrency:
+  group: formscan-verified-publication
+  cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -24,102 +27,74 @@ jobs:
       EXPECTED_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check the source and completed runtime verification
+        with:
+          fetch-depth: 0
+      - name: Require the complete successful verification of integrated source
         run: |
+          python3 - <<'PY'
+          import os, re
+          assert re.fullmatch(r'[0-9]+', os.environ['SOURCE_RUN'])
+          assert re.fullmatch(r'[a-f0-9]{40}', os.environ['SOURCE_SHA'])
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['EXPECTED_VERSION'])
+          PY
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > source-run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs" > source-jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs?per_page=100" > source-jobs.json
           python3 - <<'PY'
           import json, os
           run = json.load(open('source-run.json'))
           assert run['head_sha'] == os.environ['SOURCE_SHA']
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['path'] == '.github/workflows/build.yml'
           jobs = json.load(open('source-jobs.json'))['jobs']
-          job = next(job for job in jobs if 'xcode-27' in job['name'])
-          for name in ['Verify actual Files import and a checked box first', 'Test PDF editing and three real offline models']:
-              assert any(step['name'] == name and step['conclusion'] == 'success' for step in job['steps']), name
-          if os.environ['EXPECTED_VERSION'] != '2.2.1':
-              assert next(job for job in jobs if 'macos-26' in job['name'])['conclusion'] == 'success'
-          print('Verified source commit, real Files import, checked PDF and offline model tests')
+          for key in ('macos-26', 'xcode-27', 'cloud_backend'):
+              matching = [job for job in jobs if key in job['name']]
+              assert len(matching) == 1 and matching[0]['conclusion'] == 'success', key
+          print('Complete iOS 26, iOS 27 and private PostgreSQL verification passed')
           PY
-      - uses: actions/download-artifact@v4
-        with:
-          name: FormScan-candidate-IPA-iOS27
-          run-id: ${{ inputs.run_id }}
-          github-token: ${{ github.token }}
-          path: candidate
+          git fetch origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          git diff --exit-code "$SOURCE_SHA" origin/main -- Sources Models Assets.xcassets Artwork Config project.yml Tests UITests Backend Scripts .github/workflows/build.yml
+          git checkout --detach "$SOURCE_SHA"
       - uses: actions/download-artifact@v4
         with:
           name: FormScan-build-and-verification-iOS27
           run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
-          path: evidence
-      - name: Prepare the exact IPA, artwork and evidence
+          path: verified
+      - name: Validate the actual package and live service
         run: |
-          python3 -m pip install zstandard==0.25.0
-          mkdir release
-          cp candidate/*.ipa release/
-          cp evidence/Assets.xcassets/AppIcon.appiconset/*.png release/
-          cp Docs/Models.md Docs/Design.md Docs/iOS27.md Sources/Resources/ThirdPartyNotices.txt release/
-          cp evidence/critical-ui-tests.log evidence/unit-tests.log evidence/simulator-tests.log release/
+          mv verified/release release
           python3 - <<'PY'
-          import json, os, pathlib, plistlib, shutil, zipfile
-          ipa = next(pathlib.Path('release').glob('*.ipa'))
-          with zipfile.ZipFile(ipa) as archive:
+          import os, pathlib, plistlib, zipfile
+          files = list(pathlib.Path('release').glob('*.ipa'))
+          assert len(files) == 1 and files[0].name == 'FormScan-' + os.environ['EXPECTED_VERSION'] + '.ipa'
+          with zipfile.ZipFile(files[0]) as archive:
               info = plistlib.loads(archive.read('Payload/FormScan.app/Info.plist'))
           assert info['CFBundleShortVersionString'] == os.environ['EXPECTED_VERSION']
-          assert info['CFBundleIdentifier'] == 'com.polaca1.formscan'
-          assert info['MinimumOSVersion'] == '26.0'
           assert info['DTSDKName'].startswith('iphoneos27')
           PY
-          if [ "$EXPECTED_VERSION" != '2.2.1' ]; then
-            python3 - <<'PY'
-          import pathlib, re
-          log = pathlib.Path('evidence/simulator-tests.log').read_text()
-          assert "Test Suite 'Selected tests' passed" in log
-          assert re.search(r'Executed 10 tests, with 0 failures', log)
-          assert len(re.findall(r"Test Case .* passed \(", log)) == 10
-          assert not re.search(r': error: -\[FormScanUITests', log)
-          print('All nine remaining UI tests also passed; Xcode stalled after the passing root suite')
-          PY
-            python3 Scripts/export_screenshots.py evidence/TestResults.xcresult evidence/Screenshots/standard --recover
-          fi
-          python3 - <<'PY'
-          import json, pathlib, shutil
-          for manifest in pathlib.Path('evidence/Screenshots').rglob('manifest.json'):
-              for case in json.loads(manifest.read_text()):
-                  for attachment in case['attachments']:
-                      name = attachment['suggestedHumanReadableName'].split('_')[0]
-                      if name[:2].isdigit() and attachment['exportedFileName'].endswith('.png'):
-                          shutil.copyfile(manifest.parent / attachment['exportedFileName'], pathlib.Path('release') / (name + '.png'))
-          PY
-          python3 Scripts/release_source.py "release/FormScan-$EXPECTED_VERSION.ipa"
-      - name: Upload and verify the public download
+          python3 Scripts/check_production_package.py "release/FormScan-$EXPECTED_VERSION.ipa"
+          python3 Scripts/prepare_accounts.py --check-service
+          cp Docs/Cloud.md Docs/Accounts.md Docs/Design.md Docs/iOS27.md release/
+          cp verified/unit-tests.log verified/critical-ui-tests.log verified/simulator-tests.log release/
+      - name: Publish and verify the exact tested download
         run: |
           TAG="v$EXPECTED_VERSION"
           cat > release-notes.md <<'NOTES'
-          Análisis automático, recomendaciones por dispositivo, contraste progresivo con tres modelos locales instalados y casillas vectoriales. Diseño nativo para iOS 27 compatible con iOS 26, biblioteca y un icono con apariencias clara y oscura.
+          Acceso con Google y correo, guardado privado de PDF y campos, recuperación automática, edición sin conexión y conservación de ambas versiones ante cambios simultáneos. Se corrige el campo de texto duplicado sobre casillas. Análisis local automático y exportación del documento completado, con interfaz nativa para iOS 26 y 27.
 
-          Verificado: pruebas de PDF y modelos locales, importación real desde Archivos, reapertura y casilla marcada en el documento. Las capturas de los dos recorridos se adjuntan. Continúan las comprobaciones completas de accesibilidad e interfaz de iOS 27.
+          Verificado en cada simulador: 58 pruebas de datos y transporte y 14 recorridos de interfaz, incluyendo importación real desde Archivos, edición, exportación, casillas, tablas, recuperación tras eliminar la biblioteca local y reintento sin conexión. Diez pruebas adicionales de permisos y escrituras simultáneas en PostgreSQL 17. Registros y capturas adjuntos. La prueba de nube del simulador usa un servicio aislado, sin cuentas reales.
 
-          IPA sin firmar para SideStore. La cámara física requiere un iPhone.
+          Se ha comprobado en vivo la configuración pública de acceso y el almacenamiento privado. El inicio Google, la entrega SMTP y el ciclo de nube con una cuenta real en un iPhone físico requieren comprobación en el dispositivo. IPA sin firmar para SideStore. Actualiza sobre la instalación existente para conservar cambios locales pendientes.
           NOTES
-          if [ "$EXPECTED_VERSION" != '2.2.1' ]; then
-            cat > release-notes.md <<'NOTES'
-          Interfaz nativa para iOS 27 compatible con iOS 26, icono claro y oscuro, análisis automático al importar o escanear, Multi IA local con modelos instalados y recomendaciones según el dispositivo. Casillas con marca vectorial, importación real desde Archivos y formulario sincronizado con el documento.
-
-          Verificación: 28 pruebas en iOS 26 y otras 28 en iOS 27 superadas, incluyendo PDF, tres modelos reales, importación/reapertura, texto grande, modos claro/oscuro, navegación, casillas, edición, exportación y accesibilidad. En iOS 27 xcodebuild se bloqueó al finalizar el informe después de registrar todas las pruebas aprobadas; los registros y capturas se han comprobado y la finalización tiene ahora un límite de espera.
-
-          IPA sin firmar para SideStore. La cámara y la instalación física requieren un iPhone.
-          NOTES
-          fi
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --draft --target "$SOURCE_SHA" --title "FormScan $EXPECTED_VERSION" --notes-file release-notes.md
           fi
-          mkdir existing
-          if gh release download "$TAG" --pattern "FormScan-$EXPECTED_VERSION.ipa" --dir existing; then
-            cmp "existing/FormScan-$EXPECTED_VERSION.ipa" "release/FormScan-$EXPECTED_VERSION.ipa"
+          mkdir previous
+          if gh release download "$TAG" --pattern "FormScan-$EXPECTED_VERSION.ipa" --dir previous; then
+            cmp "previous/FormScan-$EXPECTED_VERSION.ipa" "release/FormScan-$EXPECTED_VERSION.ipa"
           fi
           gh release upload "$TAG" release/* --clobber
-          gh release edit "$TAG" --draft=false --notes-file release-notes.md
           mkdir downloaded
           gh release download "$TAG" --pattern "FormScan-$EXPECTED_VERSION.ipa" --dir downloaded
           cmp "downloaded/FormScan-$EXPECTED_VERSION.ipa" "release/FormScan-$EXPECTED_VERSION.ipa"
@@ -130,8 +105,11 @@ jobs:
           actual = json.load(open('downloaded/source.json'))['apps'][0]
           for key in ('version', 'bundleIdentifier', 'downloadURL', 'size', 'minOSVersion'):
               assert expected[key] == actual[key], key
+          for key in ('version', 'buildVersion', 'downloadURL', 'size', 'minOSVersion'):
+              assert expected['versions'][0][key] == actual['versions'][0][key], key
           PY
-      - name: Synchronize both sources without downgrading a newer release
+          gh release edit "$TAG" --draft=false --latest --notes-file release-notes.md
+      - name: Update matching SideStore feeds without downgrading a newer version
         run: |
           git fetch origin main
           git switch -C source-update origin/main

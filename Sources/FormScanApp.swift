@@ -25,6 +25,7 @@ struct FormScanApp: App {
 struct LibraryView: View {
     @ObservedObject var library: DocumentLibrary
     @EnvironmentObject private var models: AnalysisEngine
+    @EnvironmentObject private var cloud: DocumentCloudController
     @State private var section = AppSection.home
     @State private var openedDocument: EditorDestination?
     @State private var scanner = false
@@ -49,7 +50,7 @@ struct LibraryView: View {
             }
             Tab("Documentos", systemImage: "folder", value: AppSection.documents) {
                 NavigationStack {
-                    AllDocumentsView(library: library) { openedDocument = EditorDestination(id: $0) }
+                    AllDocumentsView(library: library) { presentDocument($0) }
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Menu("Añadir documento", systemImage: "plus") {
@@ -71,7 +72,18 @@ struct LibraryView: View {
 
     var body: some View {
         navigation
-        .fullScreenCover(item: $openedDocument) { destination in
+        #if DEBUG
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud") {
+                Text(cloud.error != nil ? "Pendiente" : cloud.busy || cloud.hasPendingChanges ? "Guardando" : "Guardado")
+                    .font(.caption2).accessibilityIdentifier("cloudFixtureState")
+            }
+        }
+        #endif
+        .safeAreaInset(edge: .bottom, spacing: 0) { DocumentCloudBanner() }
+        .fullScreenCover(item: $openedDocument, onDismiss: {
+            library.activeDocumentID = nil; cloud.synchronize()
+        }) { destination in
             NavigationStack {
                 if let session = library.session(id: destination.id) {
                     EditorView(session: session)
@@ -101,13 +113,16 @@ struct LibraryView: View {
             }
         }
         .overlay {
+            if cloud.restoring && library.documents.isEmpty {
+                ProgressView("Recuperando documentos…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            }
             if importing {
                 ProgressView("Importando…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
             }
         }
-        .alert("No se pudo completar", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
-            Button("Aceptar", role: .cancel) { error = nil }
-        } message: { Text(error ?? "") }
+        .alert("No se pudo completar", isPresented: Binding(get: { error != nil || library.error != nil }, set: { if !$0 { error = nil; library.error = nil } })) {
+            Button("Aceptar", role: .cancel) { error = nil; library.error = nil }
+        } message: { Text(error ?? library.error ?? "") }
         .onChange(of: pickedURL) { _, _ in
             // Providers may deliver their URL before or after the dismissal callback.
             if pickerClosed { importPickedFile() }
@@ -124,6 +139,10 @@ struct LibraryView: View {
             if args.contains("-ui-testing-import") { prepareImportFixture() }
             #endif
         }
+    }
+    private func presentDocument(_ id: UUID) {
+        library.activeDocumentID = id
+        openedDocument = EditorDestination(id: id)
     }
     private func presentImporter() {
         guard !importing else { return }
@@ -142,7 +161,7 @@ struct LibraryView: View {
             let id = try library.add(pdf, title: title)
             section = .documents
             library.session(id: id)?.startAnalysis(using: models, automatic: true)
-            openedDocument = EditorDestination(id: id)
+            presentDocument(id)
         } catch { self.error = error.localizedDescription }
     }
     private func importPickedFile() {
@@ -173,7 +192,7 @@ struct LibraryView: View {
             guard let session = library.session(id: id) else { return }
             ExampleTable.seedLegacyFields(in: session)
             section = .documents
-            openedDocument = EditorDestination(id: id)
+            presentDocument(id)
         } catch { self.error = error.localizedDescription }
     }
     private func prepareImportFixture() {

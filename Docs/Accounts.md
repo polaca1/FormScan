@@ -1,6 +1,6 @@
 # FormScan accounts
 
-FormScan 2.3 uses the official Supabase Swift Auth SDK 2.55.4 with PKCE.
+FormScan 2.4 uses the official Supabase Swift Auth SDK 2.55.4 with PKCE.
 The project is independent of reviewNfcGo: `zqptfsammjpdqqoonevu`.
 `Config/AccountConfiguration.json` contains only a public origin and publishable
 key. `Scripts/prepare_accounts.py` generates the bundled property list. No Google
@@ -51,12 +51,14 @@ local session even if remote revocation cannot connect; it does not delete files
 The SDK refreshes sessions. A previously authenticated local session allows offline
 access to its local documents; server actions still require a valid session.
 
-## Documents are local
+## Private documents
 
-Accounts do **not** upload or synchronize PDFs. The interface explicitly explains
-this. Scan, import, inference, editing and export remain local and work without
-model downloads or technical settings. All three verified inference resources ship
-in the app. Memory, power and thermal state choose scheduling automatically.
+Signed-in accounts automatically save PDFs and editable field metadata to the
+private FormScan service. Guest documents stay on the device. Analysis remains
+local, with all three verified inference resources bundled; there are no model
+installation controls. See [Cloud.md](Cloud.md) for the storage contract, owner
+migration and limits. The account-service publication check also requires the
+cloud health RPC to confirm schema version 1 and a private bucket.
 
 The pre-account Documents library is moved atomically to the first account used on
 this installation, preserving edits and identifiers. Later accounts use separate
@@ -64,10 +66,8 @@ UUID directories and cannot adopt that library. Guest documents created after th
 migration remain in a separate GuestDocuments directory. On account changes, open
 sessions save and stop background work before a new library appears. A failed save
 blocks the transition with a retry message and keeps the in-memory library for
-recovery. There is no claim of device-level encryption or protection from someone
-with access to the unlocked device and Files. Before removing the app, export any
-PDFs that must be retained; logging back in cannot restore files that were never
-uploaded.
+recovery. Signing in does not prove that every local document has finished uploading.
+Do not delete the app while a save error or pending-change warning is unresolved.
 
 ## Verification
 
@@ -77,7 +77,12 @@ foreign callback rejection, authenticated password updates, recovery, offline
 sign-out, friendly errors and local library migration/isolation. UI tests cover
 first launch, validation, example onboarding, privacy/settings, actual Files
 import, document/form edits, checkbox rendering, export and table regression.
-These tests do not replace a real Google account or real SMTP delivery test.
+Cloud controller and HTTP transport tests cover restore, offline edits, failed
+responses, ownership, simultaneous edits and deletion races. A simulator-only
+service tests recovery after removing the local library, preserving text and
+checkboxes, and retry after failure. It is excluded from release builds.
+These tests do not replace a real Google account, SMTP delivery or real-device
+cloud acceptance test.
 
 Apple references applied: native navigation and forms, focus/autofill, Dynamic Type,
 light/dark appearance, accessible controls, reduced motion and explicit privacy:

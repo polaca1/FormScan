@@ -28,7 +28,11 @@ final class DocumentWorkspace: ObservableObject {
         let files = FileManager.default
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") || ProcessInfo.processInfo.arguments.contains("-ui-testing-reopen") {
-            return root.appendingPathComponent("UITestDocuments", isDirectory: true)
+            let directory = root.appendingPathComponent("UITestDocuments", isDirectory: true)
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud-new-install") {
+                try? files.removeItem(at: directory)
+            }
+            return directory
         }
         #endif
         let legacy = root.appendingPathComponent("Documents", isDirectory: true)
@@ -56,6 +60,8 @@ final class DocumentWorkspace: ObservableObject {
 struct AccountRootView: View {
     @EnvironmentObject private var account: AccountStore
     @StateObject private var workspace = DocumentWorkspace()
+    @StateObject private var cloud = DocumentCloudController()
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         Group {
             if account.restoring {
@@ -80,7 +86,27 @@ struct AccountRootView: View {
                 } else { ProgressView("Abriendo documentos…") }
             } else { AccountAccessView() }
         }
-        .task(id: account.workspaceKey) { workspace.activate(account.workspaceKey) }
+        .environmentObject(cloud)
+        .task(id: account.workspaceKey) {
+            cloud.disconnect()
+            workspace.activate(account.workspaceKey)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud"), let library = workspace.library {
+                do { cloud.connect(library: library, api: try DocumentCloudUIFixture()) }
+                catch { cloud.error = DocumentCloudIssue.unavailable.localizedDescription }
+                return
+            }
+            #endif
+            if let owner = account.user?.id, let library = workspace.library,
+               workspace.key == owner.uuidString, let configuration = AccountConfiguration.load() {
+                cloud.connect(library: library, api: SupabaseDocumentCloud(owner: owner, configuration: configuration) {
+                    try await account.cloudAccessToken(for: owner)
+                })
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { cloud.synchronize() }
+        }
         .onOpenURL { url in Task { await account.handleCallback(url) } }
     }
 }

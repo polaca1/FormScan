@@ -34,6 +34,8 @@ def verify(ipa):
         assert privacy['NSPrivacyTracking'] is False
         assert archive.read(prefix + 'ThirdPartyNotices.txt')
         assert not any('Tests.xctest/' in n or '/embedded.mobileprovision' in n for n in archive.namelist())
+        executable = archive.read(prefix + info['CFBundleExecutable'])
+        assert b'cloudFixtureState' not in executable, 'Simulator cloud fixture leaked into the production binary'
         print(f"Production package verified: {info['CFBundleShortVersionString']} ({info['CFBundleVersion']}), native callback, public account configuration, all offline resources and privacy manifest")
 
 if __name__ == '__main__':

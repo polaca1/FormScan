@@ -83,7 +83,7 @@ struct AccountAccessView: View {
                             Button("Continuar sin cuenta") { account.continueOnDevice() }
                                 .foregroundStyle(.secondary).accessibilityIdentifier("continueOnDevice")
                         }
-                        Text("Tus documentos se analizan y guardan en este dispositivo. Iniciar sesión no crea una copia de tus PDF en la nube.")
+                        Text("El análisis se hace en tu dispositivo. Con una cuenta, tus documentos se guardan de forma privada y puedes recuperarlos al volver a entrar.")
                             .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }.frame(maxWidth: .infinity)
                 }.frame(maxWidth: 500).padding(28).frame(maxWidth: .infinity)
@@ -156,6 +156,7 @@ struct AccountPasswordView: View {
 
 struct AccountSettingsView: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var cloud: DocumentCloudController
     let tutorial: () -> Void
     let beforeSignOut: () throws -> Void
     @State private var saveError: String?
@@ -189,7 +190,7 @@ struct AccountSettingsView: View {
                         Task { await account.signOut() }
                     } catch { saveError = "No se pudieron guardar los últimos cambios. Comprueba el espacio disponible y vuelve a intentarlo antes de cerrar sesión." }
                 }
-            } message: { Text("Los documentos se conservarán en este dispositivo para cuando vuelvas a entrar en esta cuenta.") }
+            } message: { Text(cloud.hasPendingChanges ? "Hay cambios pendientes de guardar en tu cuenta. Se conservarán en este dispositivo para enviarlos cuando vuelvas a entrar. No elimines la app hasta completar el guardado." : "Los documentos se conservarán en este dispositivo y podrás recuperar los guardados en tu cuenta al volver a entrar.") }
             .alert("No se pudo guardar", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
                 Button("Aceptar", role: .cancel) { saveError = nil }
             } message: { Text(saveError ?? "") }
@@ -200,12 +201,12 @@ struct FormScanPrivacyView: View {
     var body: some View {
         List {
             Section("Tus documentos") {
-                Text("El escaneo, la detección de campos y la edición se realizan en tu dispositivo. Tus PDF e imágenes no se envían al servicio de cuentas.")
-                Text("La biblioteca se guarda en este dispositivo. Exporta los documentos que quieras conservar en otro lugar antes de eliminar la app.")
+                Text("El escaneo, la detección de campos y la edición se realizan en tu dispositivo. Si inicias sesión, se guarda una copia privada de tus PDF y sus campos para que puedas recuperarlos en tu cuenta.")
+                Text("Puedes seguir trabajando sin conexión. Los cambios pendientes se envían al recuperar la conexión. Si hay un error de guardado, resuélvelo antes de eliminar la app; también puedes exportar tus documentos.")
             }
             Section("Tu cuenta") {
                 Text("El servicio de acceso utiliza tu correo y los datos necesarios para verificar tu identidad. FormScan no recibe tu contraseña de Google.")
-                Text("Puedes cerrar sesión desde Ajustes. Iniciar sesión no sincroniza los documentos entre dispositivos.")
+                Text("Solo la cuenta que creó un documento puede acceder a su copia guardada. Si dos dispositivos cambian un documento, se conservan las versiones para evitar perder datos.")
             }
             Section("Al compartir") { Text("Solo se comparte el PDF que exportes y con la aplicación que elijas.") }
         }.navigationTitle("Privacidad").navigationBarTitleDisplayMode(.inline)

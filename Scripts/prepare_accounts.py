@@ -29,6 +29,12 @@ def readiness():
     assert not settings.get('mailer_autoconfirm', True), 'Enable email confirmation before publishing'
     assert not settings.get('disable_signup'), 'Account creation is disabled'
     print('Public account providers and email confirmation are enabled')
+    request = urllib.request.Request(config['origin'] + '/rest/v1/rpc/formscan_cloud_health',
+                                     data=b'{}', headers={'apikey': config['publicKey'], 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        health = json.load(response)
+    assert health.get('schemaVersion') == 1 and health.get('privateBucket') is True, 'Run Backend/001_document_cloud.sql before publishing'
+    print('Document storage schema is ready and its bucket is private')
 
 
 if __name__ == '__main__':

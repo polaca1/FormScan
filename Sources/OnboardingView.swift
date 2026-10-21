@@ -35,8 +35,8 @@ struct OnboardingView: View {
                         Image(systemName: "checkmark.shield").font(.system(size: 64, weight: .light)).foregroundStyle(.blue)
                             .padding(.vertical, 20).accessibilityHidden(true)
                         Text("Tu documento.\nTu dispositivo.").font(.largeTitle.bold()).tracking(-1)
-                        tip("checkmark.shield", "Análisis privado", "Los campos se detectan automáticamente en tu dispositivo. Tus documentos no se envían a ningún servidor.")
-                        tip("doc.on.doc", "Vuelve cuando quieras", "Tus documentos y sus campos permanecen en la biblioteca.")
+                        tip("checkmark.shield", "Análisis privado", "Los campos se detectan automáticamente en tu dispositivo. El análisis no envía tus documentos a servicios de IA.")
+                        tip("doc.on.doc", "Vuelve cuando quieras", "Con una cuenta, tus documentos y sus campos se guardan para recuperarlos cuando vuelvas. Sin cuenta, permanecen solo en este dispositivo.")
                         tip("square.and.arrow.up", "Comparte el resultado", "Exporta un PDF con todos los datos incorporados.")
                     }
                 }

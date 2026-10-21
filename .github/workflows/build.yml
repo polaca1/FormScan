@@ -1,7 +1,7 @@
 name: Build and verify iOS 26 and 27
 on:
   push:
-    branches: [main, codex/ios26-rebuild]
+    branches: [main, codex/ios26-rebuild, codex/cloud-documents]
     paths-ignore: [source.json, sidestore-v2.json, README.md]
   workflow_dispatch:
     inputs:
@@ -16,6 +16,28 @@ concurrency:
   group: formscan-ios26-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  cloud_backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: formscan_test
+          POSTGRES_PASSWORD: formscan-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install 'psycopg[binary]==3.2.9'
+      - name: Verify private storage, account isolation and simultaneous commits
+        env:
+          FORMSCAN_TEST_DSN: host=127.0.0.1 port=5432 dbname=formscan_test user=postgres password=formscan-test-only
+        run: python3 -m unittest discover -s Backend/tests -v
   ios:
     strategy:
       fail-fast: false
@@ -93,17 +115,17 @@ jobs:
         timeout-minutes: 13
         run: |
           set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 42 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
-      - name: Verify actual Files import and a checked box first
+          python3 -u Scripts/run_tests.py --expected 58 --log unit-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath UnitTests.xcresult -only-testing:FormScanTests -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
+      - name: Verify Files import, cloud recovery and a checked box first
         timeout-minutes: 12
         run: |
           set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 2 --log critical-ui-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test
+          python3 -u Scripts/run_tests.py --expected 3 --log critical-ui-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath CriticalUI.xcresult -only-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -only-testing:FormScanUITests/FormScanUITests/testPrivateCloudRestoreEditFreshInstallationAndRetry -only-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=NO test
       - name: Test import, automatic analysis and native user interface
         timeout-minutes: 12
         run: |
           set -o pipefail
-          python3 -u Scripts/run_tests.py --expected 11 --log simulator-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
+          python3 -u Scripts/run_tests.py --expected 11 --log simulator-tests.log -- xcodebuild -project FormScan.xcodeproj -scheme FormScan -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -destination-timeout 120 -configuration Debug -derivedDataPath build-simulator -resultBundlePath TestResults.xcresult -only-testing:FormScanUITests -skip-testing:FormScanUITests/FormScanUITests/testImportActualPDFThroughFilesAndReopenIt -skip-testing:FormScanUITests/FormScanUITests/testPrivateCloudRestoreEditFreshInstallationAndRetry -skip-testing:FormScanUITests/FormScanUITests/testRepeatedModeChangesKeepToolbarStableAndCheckboxHasPrintedText -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - name: Export UI screenshots
         if: always()
         run: |
@@ -160,7 +182,7 @@ jobs:
             Assets.xcassets/AppIcon.appiconset/*.png
           retention-days: 14
   publish:
-    needs: ios
+    needs: [ios, cloud_backend]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -181,7 +203,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$APP_VERSION"
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 y 27 · acceso con Google y correo · tutorial y documento de ejemplo · análisis privado automático · edición y exportación PDF. IPA sin firmar para SideStore. Pruebas de PDF, IA y UI en simulador incluidas en Actions." --latest
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "FormScan $APP_VERSION" --notes "iOS 26 y 27 · Google y correo · guardado privado y recuperación de documentos · edición sin conexión y conservación de conflictos · casillas corregidas · análisis local y exportación PDF. IPA sin firmar para SideStore. Pruebas de permisos PostgreSQL, PDF, IA, transporte y UI en simulador incluidas en Actions. El acceso Google, la entrega de correo y el ciclo de nube en un dispositivo físico requieren comprobación con una cuenta real." --latest
           mkdir release-check
           gh release download "$TAG" --pattern "FormScan-$APP_VERSION.ipa" --dir release-check
           python3 Scripts/release_source.py "release-check/FormScan-$APP_VERSION.ipa" --output release-check
