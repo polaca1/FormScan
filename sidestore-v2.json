@@ -3,7 +3,7 @@
   "identifier": "com.polaca1.formscan.source.v2",
   "subtitle": "Tus formularios, resueltos.",
   "description": "Escáner y formularios con IA local. Diseñado para iOS 26 y 27.",
-  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.4/AppIcon.png",
+  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/AppIcon.png",
   "apps": [
     {
       "name": "FormScan",
@@ -11,24 +11,24 @@
       "developerName": "FormScan",
       "subtitle": "Escanea. Completa. Comparte.",
       "localizedDescription": "Escanea documentos, importa PDF o imágenes y detecta campos con IA local. Lo que escribes en el formulario aparece inmediatamente en el documento. Guarda, revisa y exporta un PDF listo para compartir.",
-      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.4/AppIcon.png",
+      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/AppIcon.png",
       "tintColor": "007AFF",
       "versions": [
         {
-          "version": "2.2.4",
-          "buildVersion": "28",
-          "date": "2026-10-20T16:27:30Z",
-          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.4/FormScan-2.2.4.ipa",
-          "size": 14129233,
+          "version": "2.4.0",
+          "buildVersion": "31",
+          "date": "2026-10-21T23:46:56Z",
+          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/FormScan-2.4.0.ipa",
+          "size": 44420401,
           "minOSVersion": "26.0",
-          "localizedDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF."
+          "localizedDescription": "Acceso con Google o correo y guardado privado de documentos en tu cuenta. Recuperación automática, edición sin conexión y protección de cambios entre dispositivos. Casillas corregidas, análisis local y exportación PDF para iOS 26 y 27."
         }
       ],
-      "version": "2.2.4",
-      "versionDate": "2026-10-20T16:27:30Z",
-      "versionDescription": "Diseño nativo para iOS 27 compatible con iOS 26. Análisis automático, Multi IA local con resultados progresivos, recomendaciones por dispositivo y casillas vectoriales. Importación local y edición sincronizada con el PDF.",
-      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.2.4/FormScan-2.2.4.ipa",
-      "size": 14129233,
+      "version": "2.4.0",
+      "versionDate": "2026-10-21T23:46:56Z",
+      "versionDescription": "Acceso con Google o correo y guardado privado de documentos en tu cuenta. Recuperación automática, edición sin conexión y protección de cambios entre dispositivos. Casillas corregidas, análisis local y exportación PDF para iOS 26 y 27.",
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/FormScan-2.4.0.ipa",
+      "size": 44420401,
       "minOSVersion": "26.0",
       "appPermissions": {
         "entitlements": [],
