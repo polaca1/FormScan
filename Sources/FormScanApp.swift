@@ -72,6 +72,14 @@ struct LibraryView: View {
 
     var body: some View {
         navigation
+        #if DEBUG
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud") {
+                Text(cloud.error != nil ? "Pendiente" : cloud.busy || cloud.hasPendingChanges ? "Guardando" : "Guardado")
+                    .font(.caption2).accessibilityIdentifier("cloudFixtureState")
+            }
+        }
+        #endif
         .safeAreaInset(edge: .bottom, spacing: 0) { DocumentCloudBanner() }
         .fullScreenCover(item: $openedDocument, onDismiss: {
             library.activeDocumentID = nil; cloud.synchronize()

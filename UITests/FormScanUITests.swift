@@ -321,9 +321,48 @@ final class FormScanUITests: XCTestCase {
         let status = app.descendants(matching: .any)["documentStatus"].firstMatch
         let analyzed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Análisis completado"), object: status)
         XCTAssertEqual(XCTWaiter.wait(for: [analyzed], timeout: 30), .completed)
+        XCTAssertTrue(status.label.contains("de 4 campos"), "The native checkbox must not gain a duplicate text field: \(status.label)")
         picker.buttons["Formulario"].tap()
         XCTAssertTrue(app.textViews["field-Nombre completo"].exists || app.textFields["field-Nombre completo"].exists)
         screenshot("24-auto-analysis")
+    }
+
+    func testPrivateCloudRestoreEditFreshInstallationAndRetry() {
+        executionTimeAllowance = 180
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-cloud"]
+        app.launch()
+        let documents = app.tabBars.buttons["Documentos"]
+        XCTAssertTrue(documents.waitForExistence(timeout: 12)); documents.tap()
+        let recovered = app.staticTexts["Documento recuperado"].firstMatch
+        XCTAssertTrue(recovered.waitForExistence(timeout: 15)); recovered.tap()
+        let picker = app.segmentedControls["editorMode"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.buttons["Formulario"].tap()
+        let name = app.textViews["field-Nombre completo"].exists ? app.textViews["field-Nombre completo"] : app.textFields["field-Nombre completo"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Guardado entre instalaciones")
+        app.buttons["finishFormEditing"].tap()
+        let check = app.switches["He revisado los datos del formulario."]
+        XCTAssertEqual(check.value as? String, "1")
+        screenshot("31-cloud-restored-form")
+        app.buttons["closeDocument"].tap()
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Guardado'"), object: app.staticTexts["cloudFixtureState"])
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 15), .completed)
+        app.terminate()
+        // Remove only the local library. The separate simulated account service
+        // persists its own files and deliberately fails the first catalogue call.
+        app.launchArguments = ["-ui-testing-reopen", "-ui-testing-cloud", "-ui-testing-cloud-new-install", "-ui-testing-cloud-error"]
+        app.launch()
+        let retry = app.buttons["Reintentar"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 15))
+        XCTAssertFalse(recovered.exists, "A network failure must not be treated as an empty account")
+        screenshot("32-cloud-retry")
+        retry.tap()
+        XCTAssertTrue(recovered.waitForExistence(timeout: 15)); recovered.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.buttons["Formulario"].tap()
+        let restoredName = app.textViews["field-Nombre completo"].exists ? app.textViews["field-Nombre completo"] : app.textFields["field-Nombre completo"]
+        XCTAssertEqual(restoredName.value as? String, "Guardado entre instalaciones")
+        XCTAssertEqual(check.value as? String, "1")
+        screenshot("33-cloud-fresh-install")
     }
 
 }

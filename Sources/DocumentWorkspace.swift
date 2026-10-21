@@ -28,7 +28,11 @@ final class DocumentWorkspace: ObservableObject {
         let files = FileManager.default
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") || ProcessInfo.processInfo.arguments.contains("-ui-testing-reopen") {
-            return root.appendingPathComponent("UITestDocuments", isDirectory: true)
+            let directory = root.appendingPathComponent("UITestDocuments", isDirectory: true)
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud-new-install") {
+                try? files.removeItem(at: directory)
+            }
+            return directory
         }
         #endif
         let legacy = root.appendingPathComponent("Documents", isDirectory: true)
@@ -86,6 +90,13 @@ struct AccountRootView: View {
         .task(id: account.workspaceKey) {
             cloud.disconnect()
             workspace.activate(account.workspaceKey)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-cloud"), let library = workspace.library {
+                do { cloud.connect(library: library, api: try DocumentCloudUIFixture()) }
+                catch { cloud.error = DocumentCloudIssue.unavailable.localizedDescription }
+                return
+            }
+            #endif
             if let owner = account.user?.id, let library = workspace.library,
                workspace.key == owner.uuidString, let configuration = AccountConfiguration.load() {
                 cloud.connect(library: library, api: SupabaseDocumentCloud(owner: owner, configuration: configuration) {
