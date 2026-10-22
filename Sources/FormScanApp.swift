@@ -129,11 +129,30 @@ struct LibraryView: View {
             if args.contains("-ui-testing-example"), library.documents.isEmpty { openExample() }
             if args.contains("-ui-testing-reopen") { section = .documents }
             #if DEBUG
+            if args.contains("-ui-testing-typing"), library.documents.isEmpty { openTypingFixture() }
             if args.contains("-ui-testing-table"), library.documents.isEmpty { openReportedTable() }
             if args.contains("-ui-testing-import") { prepareImportFixture() }
             #endif
         }
     }
+    #if DEBUG
+    private func openTypingFixture() {
+        let bounds = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let source = ExampleDocument.make(widgets: false)
+        let image = source.page(at: 0)!.thumbnail(of: CGSize(width: 1190, height: 1684), for: .cropBox)
+        let data = UIGraphicsPDFRenderer(bounds: bounds).pdfData { context in
+            for _ in 0..<2 { context.beginPage(); image.draw(in: bounds) }
+        }
+        do {
+            let id = try library.add(PDFDocument(data: data)!, title: "Escaneo multipágina")
+            let session = library.session(id: id)!
+            session.item.fields = (0..<2).map { FormEntry(page: $0, rect: CGRect(x: 50, y: 250, width: 490, height: 36), label: "Respuesta \($0 + 1)", origin: "manual") }
+            session.item.analyzed = true; session.item.analysisVersion = DocumentSession.analysisVersion
+            session.changed(); try session.persistNow()
+            section = .documents; presentDocument(id)
+        } catch { self.error = error.localizedDescription }
+    }
+    #endif
     private func presentDocument(_ id: UUID) {
         library.activeDocumentID = id
         openedDocument = EditorDestination(id: id)

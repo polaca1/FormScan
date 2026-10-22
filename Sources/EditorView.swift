@@ -155,7 +155,7 @@ struct EditorView: View {
         return .topBarTrailing
     }
     private var preview: some View {
-        PDFCanvas(document: session.document, fields: session.item.fields, revision: session.revision,
+        PDFCanvas(document: session.document, fields: session.item.fields, revision: session.revision, active: wideLayout || mode == .document,
                   page: $page, placing: placing) { field in selection = field } place: { point, index in
             guard let id = placing, var field = session.item.fields.first(where: { $0.id == id }),
                   let pdfPage = session.document.page(at: index) else { return }

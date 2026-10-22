@@ -12,7 +12,7 @@ private final class MemoryAuthStorage: AuthLocalStorage, @unchecked Sendable {
 }
 
 private actor AccountTransport {
-    enum Mode { case session, confirmation, rejected, offline }
+    enum Mode { case session, confirmation, rejected, offline, unverified, differentUser }
     var mode = Mode.session
     private(set) var requests: [URLRequest] = []
     static let userID = UUID(uuidString: "503909F4-34A1-4A49-B72F-DB371D01FEA7")!
@@ -20,9 +20,11 @@ private actor AccountTransport {
     func fetch(_ request: URLRequest) throws -> (Data, URLResponse) {
         requests.append(request)
         if mode == .offline { throw URLError(.notConnectedToInternet) }
-        let user: [String: Any] = ["id": Self.userID.uuidString, "aud": "authenticated", "role": "authenticated",
+        var user: [String: Any] = ["id": Self.userID.uuidString, "aud": "authenticated", "role": "authenticated",
             "email": "person@example.com", "app_metadata": ["provider": "email"], "user_metadata": [:],
             "created_at": "2026-10-01T12:00:00Z", "updated_at": "2026-10-01T12:00:00Z", "is_anonymous": false]
+        if mode != .unverified { user["email_confirmed_at"] = "2026-10-01T12:00:00Z" }
+        if mode == .differentUser { user["id"] = UUID().uuidString }
         let body: [String: Any]
         var status = 200
         if mode == .rejected { status = 400; body = ["code": "invalid_credentials", "msg": "backend diagnostic must stay private"] }
@@ -120,6 +122,25 @@ private actor AccountTransport {
         XCTAssertFalse(requests.contains { $0.url?.path.hasSuffix("/signup") == true })
         let update = try XCTUnwrap(requests.first { $0.httpMethod == "PUT" && $0.url?.path.hasSuffix("/user") == true })
         XCTAssertEqual(update.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-access")
+    }
+    func testPasswordCreationRequiresVerifiedSameServerIdentity() async {
+        for mode in [AccountTransport.Mode.unverified, .differentUser] {
+            let transport = AccountTransport()
+            let account = AccountStore(client: makeClient(transport), defaults: defaults(), observe: false)
+            await account.signIn(email: "person@example.com", password: "fixture-password")
+            let previous = account.user
+            await transport.setMode(mode)
+            await account.updatePassword("new-fixture-password", confirmation: "new-fixture-password")
+            XCTAssertNotNil(account.error); XCTAssertEqual(account.user, previous)
+            let requests = await transport.requests
+            XCTAssertFalse(requests.contains { $0.httpMethod == "PUT" && $0.url?.path.hasSuffix("/user") == true })
+        }
+        let transport = AccountTransport()
+        let signedOut = AccountStore(client: makeClient(transport), defaults: defaults(), observe: false)
+        await signedOut.updatePassword("new-fixture-password", confirmation: "new-fixture-password")
+        XCTAssertNotNil(signedOut.error)
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
     }
     func testRecoveryUsesPKCEAndGenericNotice() async throws {
         let transport = AccountTransport(), prefs = defaults()

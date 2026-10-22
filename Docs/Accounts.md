@@ -1,6 +1,6 @@
 # FormScan accounts
 
-FormScan 2.4 uses the official Supabase Swift Auth SDK 2.55.4 with PKCE.
+FormScan 2.4.1 uses the official Supabase Swift Auth SDK 2.55.4 with PKCE.
 The project is independent of reviewNfcGo: `zqptfsammjpdqqoonevu`.
 `Config/AccountConfiguration.json` contains only a public origin and publishable
 key. `Scripts/prepare_accounts.py` generates the bundled property list. No Google
@@ -46,7 +46,27 @@ same device that requested it. If the app was removed, request a new link.
 
 Unconfirmed registration never creates a simulated session. Google users can add
 a FormScan password using authenticated PUT /auth/v1/user; the UUID and email must
-remain the same. No client-side email matching grants access. Sign-out clears the
+remain the same. Before updating the password, the app refreshes the SDK session,
+fetches the authenticated user from the service, and requires the same UUID and
+confirmed email. No client-side email matching grants access.
+
+Supabase automatically links Google to the existing account when both methods use
+the same verified email. Do not merge document owners by email in SQL or in the
+client: the Supabase UUID remains the authority. See the official identity-linking
+guide: https://supabase.com/docs/guides/auth/auth-identity-linking
+
+- Email first: confirm the email, then use Google with that same address.
+- Google first: sign in with Google, open Settings → Create or change password,
+  and choose a FormScan password. Both methods then access the same account.
+- Registering again is not how a Google account gets a password. The registration
+  screen and generic confirmation notice explain the authenticated route without
+  revealing whether an email is registered.
+
+Stateful transport tests cover both orders through the real SDK, fresh local auth
+storage, the same owner UUID and an edited document. They test the client contract,
+not a Google login against the production account.
+
+ Sign-out clears the
 local session even if remote revocation cannot connect; it does not delete files.
 The SDK refreshes sessions. A previously authenticated local session allows offline
 access to its local documents; server actions still require a valid session.

@@ -38,7 +38,7 @@ struct AccountConfiguration {
 }
 
 enum AccountIssue: LocalizedError {
-    case unavailable, invalidEmail, weakPassword, passwordMismatch, invalidCallback
+    case unavailable, invalidEmail, weakPassword, passwordMismatch, invalidCallback, unverifiedEmail
     var errorDescription: String? {
         switch self {
         case .unavailable: "El acceso no está disponible en este momento. Inténtalo más tarde."
@@ -46,6 +46,7 @@ enum AccountIssue: LocalizedError {
         case .weakPassword: "Usa una contraseña de al menos 8 caracteres."
         case .passwordMismatch: "Las contraseñas no coinciden."
         case .invalidCallback: "El enlace ha caducado o no corresponde a este intento. Solicita uno nuevo."
+        case .unverifiedEmail: "Confirma tu correo antes de añadir una contraseña. También puedes entrar con Google usando ese mismo correo."
         }
     }
 }
@@ -200,7 +201,7 @@ final class AccountStore: ObservableObject {
                                                   redirectTo: AccountConfiguration.callback("confirm", nonce: nonce))
             defaults.set(nonce, forKey: "account.pendingConfirm")
             if let session = response.session { user = AccountIdentity(session.user) }
-            else { notice = "Revisa tu correo para confirmar la cuenta. Después podrás entrar en FormScan." }
+            else { notice = "Revisa tu correo para confirmar la cuenta. Si ya entrabas con Google, continúa con Google y elige Crear o cambiar contraseña en Ajustes; conservarás tus documentos." }
         }
     }
     func signInWithGoogle() async {
@@ -228,9 +229,17 @@ final class AccountStore: ObservableObject {
         await perform { client in
             try Self.password(password, confirmation: confirmation)
             guard let previous = user else { throw AccountIssue.unavailable }
+            // Validate the server session before adding password access to a
+            // Google account. The authenticated UUID owns the documents; a
+            // client-entered email must never select or merge accounts.
+            let session = try await client.session
+            guard session.user.id == previous.id else { throw AccountIssue.unavailable }
+            let verified = try await client.user()
+            guard verified.id == previous.id, verified.email?.lowercased() == previous.email.lowercased() else { throw AccountIssue.unavailable }
+            guard verified.emailConfirmedAt != nil else { throw AccountIssue.unverifiedEmail }
             let updated = try await client.update(user: UserAttributes(password: password))
             guard updated.id == previous.id, updated.email?.lowercased() == previous.email.lowercased() else { throw AccountIssue.unavailable }
-            user = AccountIdentity(updated); recovering = false; notice = "Tu contraseña se ha actualizado."
+            user = AccountIdentity(updated); recovering = false; notice = "Contraseña guardada. Puedes entrar con este correo y contraseña o con Google usando el mismo correo verificado. Tus documentos siguen en la misma cuenta."
         }
     }
     func handleCallback(_ url: URL) async {

@@ -22,7 +22,7 @@ def generate(ipa, output):
         "downloadURL": f"{base}/FormScan-{version}.ipa",
         "size": pathlib.Path(ipa).stat().st_size,
         "minOSVersion": info["MinimumOSVersion"],
-        "localizedDescription": "Acceso con Google o correo y guardado privado de documentos en tu cuenta. Recuperación automática, edición sin conexión y protección de cambios entre dispositivos. Casillas corregidas, análisis local y exportación PDF para iOS 26 y 27.",
+        "localizedDescription": "Escritura fluida en formularios y PDF multipágina sin redibujar el documento oculto ni reescribirlo con cada pausa. Google y contraseña comparten la misma cuenta con el correo verificado. Se conservan el guardado privado, las casillas y la exportación PDF.",
     }
     app = {
         "name": "FormScan", "bundleIdentifier": info["CFBundleIdentifier"],

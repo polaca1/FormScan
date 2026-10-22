@@ -86,6 +86,7 @@ struct PDFCanvas: UIViewRepresentable {
     let document: PDFDocument
     let fields: [FormEntry]
     let revision: Int
+    var active = true
     @Binding var page: Int
     let placing: UUID?
     let select: (FormEntry) -> Void
@@ -106,19 +107,28 @@ struct PDFCanvas: UIViewRepresentable {
     }
     func updateUIView(_ view: PDFView, context: Context) {
         context.coordinator.parent = self
+        // Retain PDFKit for smooth mode changes without rendering a hidden PDF
+        // in response to every keystroke in the form.
+        guard active else { return }
         let documentChanged = view.document !== document
         if documentChanged { view.document = document }
         if let current = view.currentPage, document.index(for: current) != page, let target = document.page(at: page) {
             view.go(to: target)
         }
         if documentChanged || context.coordinator.lastRevision != revision {
-            for overlay in context.coordinator.overlays { overlay.fields = fields; overlay.setNeedsDisplay() }
-            for index in 0..<document.pageCount {
-                if let page = document.page(at: index) { view.annotationsChanged(on: page) }
+            let previous = Dictionary(uniqueKeysWithValues: context.coordinator.renderedFields.map { ($0.id, $0) })
+            let current = Dictionary(uniqueKeysWithValues: fields.map { ($0.id, $0) })
+            let changedIDs = Set(previous.keys).union(current.keys).filter { previous[$0] != current[$0] }
+            let changedPages = Set(changedIDs.flatMap { [previous[$0]?.page, current[$0]?.page].compactMap { $0 } })
+            for overlay in context.coordinator.overlays {
+                overlay.fields = fields
+                if documentChanged || overlay.page.map({ changedPages.contains(document.index(for: $0)) }) == true { overlay.setNeedsDisplay() }
+            }
+            for visible in view.visiblePages where documentChanged || changedPages.contains(document.index(for: visible)) {
+                view.annotationsChanged(on: visible)
             }
             context.coordinator.lastRevision = revision
-            view.documentView?.setNeedsDisplay()
-            view.setNeedsDisplay()
+            context.coordinator.renderedFields = fields
         }
     }
     static func dismantleUIView(_ view: PDFView, coordinator: Coordinator) {
@@ -129,6 +139,7 @@ struct PDFCanvas: UIViewRepresentable {
         weak var pdfView: PDFView?
         var overlays: [FieldOverlay] = []
         var lastRevision = -1
+        var renderedFields: [FormEntry] = []
         init(parent: PDFCanvas) { self.parent = parent }
         func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> UIView? {
             let overlay = FieldOverlay()

@@ -85,6 +85,7 @@ final class DocumentLibrary: ObservableObject {
     func thumbnail(for item: SavedDocument) -> UIImage? {
         if let image = thumbnails[item.id] { return image }
         guard let pdf = PDFDocument(url: pdfURL(item.id)), let page = pdf.page(at: 0) else { return nil }
+        PDFFormWriter.synchronize(item.fields, in: pdf)
         let image = withExtendedLifetime(pdf) { page.thumbnail(of: CGSize(width: 96, height: 128), for: .cropBox) }
         thumbnails[item.id] = image
         return image
@@ -160,8 +161,18 @@ final class DocumentLibrary: ObservableObject {
         if !changed, !force,
            (try? pdfURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
            (try? metadataURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { return }
-        guard let data = pdf.dataRepresentation() else { throw FormScanError.saveFailed }
-        try data.write(to: pdfURL(item.id), options: .atomic)
+        // The PDF and field metadata form one document. Ordinary edits only
+        // change metadata; serializing a scanned PDF on every typing pause blocks
+        // the keyboard. Restore, thumbnails and export apply the latest fields.
+        let previous = documents.first { $0.id == item.id }
+        let removedWidgets = Set(previous?.fields.compactMap(\.widgetName) ?? [])
+            .subtracting(item.fields.compactMap(\.widgetName))
+        let needsPDF = force || !removedWidgets.isEmpty || previous?.pageCount != item.pageCount ||
+            (try? pdfURL(item.id).resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) != true
+        if needsPDF {
+            guard let data = pdf.dataRepresentation() else { throw FormScanError.saveFailed }
+            try data.write(to: pdfURL(item.id), options: .atomic)
+        }
         try JSONEncoder().encode(item).write(to: metadataURL(item.id), options: .atomic)
         documents.removeAll { $0.id == item.id }; documents.insert(item, at: 0)
         thumbnails[item.id] = nil
@@ -206,6 +217,8 @@ final class DocumentSession: ObservableObject {
     }
     func update(_ field: FormEntry) {
         guard let index = item.fields.firstIndex(where: { $0.id == field.id }) else { return }
+        let previous = item.fields.filter { $0.id == field.id || (field.widgetName != nil && $0.widgetName == field.widgetName) }
+        guard item.fields[index] != field else { return }
         item.fields[index] = field
         if busy { editedDuringAnalysis.insert(field.id) }
         if let name = field.widgetName {
@@ -215,12 +228,14 @@ final class DocumentSession: ObservableObject {
                 item.fields[sibling].checked = field.checked
             }
         }
-        changed()
+        let ids = Set(previous.map(\.id))
+        PDFFormWriter.update(item.fields.filter { ids.contains($0.id) }, replacing: previous, in: document)
+        changed(synchronize: false)
     }
     func rename(_ title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        item.title = trimmed; changed()
+        item.title = trimmed; changed(synchronize: false)
     }
     @discardableResult
     func addField(checkbox: Bool, page index: Int) -> UUID {
@@ -239,9 +254,9 @@ final class DocumentSession: ObservableObject {
         }
         item.fields.removeAll { $0.id == id }; changed()
     }
-    func changed() {
+    func changed(synchronize: Bool = true) {
         guard valid else { return }
-        PDFFormWriter.synchronize(item.fields, in: document)
+        if synchronize { PDFFormWriter.synchronize(item.fields, in: document) }
         revision += 1; item.modified = Date()
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
@@ -401,44 +416,64 @@ enum PDFFormWriter {
         }
         for field in fields {
             guard let page = document.page(at: field.page) else { continue }
-            if let name = field.widgetName, let widget = page.annotations.first(where: { $0.fieldName == name }) {
-                if field.checkbox {
-                    widget.widgetControlType = .checkBoxControl
-                    widget.buttonWidgetState = field.checked ? .onState : .offState
-                    // PDFKit's generated button appearance varies by PDF producer.
-                    // Preserve its editable state but render our portable vector appearance.
-                    widget.shouldDisplay = false; widget.shouldPrint = false
-                } else { widget.widgetStringValue = field.text; continue }
-            }
-            if field.checkbox {
-                let outline = PDFAnnotation(bounds: field.rect, forType: .square, withProperties: nil)
-                outline.userName = prefix + field.id.uuidString + ":outline"
-                outline.color = .black; outline.interiorColor = nil
-                let edge = PDFBorder(); edge.lineWidth = 0.8; outline.border = edge
-                page.addAnnotation(outline)
-                if field.checked {
-                    let mark = PDFAnnotation(bounds: field.rect, forType: .ink, withProperties: nil)
-                    mark.userName = prefix + field.id.uuidString; mark.color = .black; mark.contents = "✓"
-                    let border = PDFBorder(); border.lineWidth = max(1.5, min(field.rect.width, field.rect.height) * 0.10); mark.border = border
-                    let path = UIBezierPath()
-                    let w = field.rect.width, h = field.rect.height
-                    path.move(to: CGPoint(x: w * 0.18, y: h * 0.5))
-                    path.addLine(to: CGPoint(x: w * 0.42, y: h * 0.25))
-                    path.addLine(to: CGPoint(x: w * 0.84, y: h * 0.82))
-                    mark.add(path); page.addAnnotation(mark)
-                }
+            write(field, on: page)
+        }
+    }
+    /// Update only the edited fields. Keep unrelated page appearances intact.
+    static func update(_ fields: [FormEntry], replacing previous: [FormEntry], in document: PDFDocument) {
+        let byID = Dictionary(uniqueKeysWithValues: fields.map { ($0.id, $0) })
+        for old in previous {
+            guard let page = document.page(at: old.page) else { continue }
+            let name = prefix + old.id.uuidString
+            let annotations = page.annotations.filter { $0.userName == name || $0.userName == name + ":outline" }
+            if let field = byID[old.id], !field.checkbox, field.widgetName == nil,
+               field.completed, field.page == old.page, field.rect == old.rect,
+               let text = annotations.first(where: { $0.type == "FreeText" }) {
+                text.contents = field.text
                 continue
             }
-            guard field.completed else { continue }
-            let annotation = PDFAnnotation(bounds: field.rect, forType: .freeText, withProperties: nil)
-            annotation.userName = prefix + field.id.uuidString
-            annotation.contents = field.text
-            // PDF standard fonts survive serialization without SF UI font substitution.
-            annotation.font = UIFont(name: "Helvetica", size: min(15, max(8, field.rect.height * 0.65)))
-            annotation.fontColor = .black; annotation.color = .clear
-            let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
-            page.addAnnotation(annotation)
+            annotations.forEach { page.removeAnnotation($0) }
+            if let field = byID[old.id], let destination = document.page(at: field.page) { write(field, on: destination) }
         }
+    }
+    private static func write(_ field: FormEntry, on page: PDFPage) {
+        if let name = field.widgetName, let widget = page.annotations.first(where: { $0.fieldName == name }) {
+            if field.checkbox {
+                widget.widgetControlType = .checkBoxControl
+                widget.buttonWidgetState = field.checked ? .onState : .offState
+                // PDFKit's generated button appearance varies by PDF producer.
+                // Preserve its editable state but render our portable vector appearance.
+                widget.shouldDisplay = false; widget.shouldPrint = false
+            } else { widget.widgetStringValue = field.text; return }
+        }
+        if field.checkbox {
+            let outline = PDFAnnotation(bounds: field.rect, forType: .square, withProperties: nil)
+            outline.userName = prefix + field.id.uuidString + ":outline"
+            outline.color = .black; outline.interiorColor = nil
+            let edge = PDFBorder(); edge.lineWidth = 0.8; outline.border = edge
+            page.addAnnotation(outline)
+            if field.checked {
+                let mark = PDFAnnotation(bounds: field.rect, forType: .ink, withProperties: nil)
+                mark.userName = prefix + field.id.uuidString; mark.color = .black; mark.contents = "✓"
+                let border = PDFBorder(); border.lineWidth = max(1.5, min(field.rect.width, field.rect.height) * 0.10); mark.border = border
+                let path = UIBezierPath()
+                let w = field.rect.width, h = field.rect.height
+                path.move(to: CGPoint(x: w * 0.18, y: h * 0.5))
+                path.addLine(to: CGPoint(x: w * 0.42, y: h * 0.25))
+                path.addLine(to: CGPoint(x: w * 0.84, y: h * 0.82))
+                mark.add(path); page.addAnnotation(mark)
+            }
+            return
+        }
+        guard field.completed else { return }
+        let annotation = PDFAnnotation(bounds: field.rect, forType: .freeText, withProperties: nil)
+        annotation.userName = prefix + field.id.uuidString
+        annotation.contents = field.text
+        // PDF standard fonts survive serialization without SF UI font substitution.
+        annotation.font = UIFont(name: "Helvetica", size: min(15, max(8, field.rect.height * 0.65)))
+        annotation.fontColor = .black; annotation.color = .clear
+        let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
+        page.addAnnotation(annotation)
     }
     static func embeddedFields(in document: PDFDocument) -> [FormEntry] {
         (0..<document.pageCount).flatMap { index -> [FormEntry] in

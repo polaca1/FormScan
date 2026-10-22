@@ -44,6 +44,39 @@ final class FormScanUITests: XCTestCase {
         XCTAssertEqual(restored.value as? String, "Water shortage 123")
     }
 
+    func testTypingAcrossScannedPagesSwitchesAndRestoresWithoutLosingCharacters() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-typing"]
+        app.launch()
+        let picker = app.segmentedControls["editorMode"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 15)); picker.buttons["Formulario"].tap()
+        let values = ["Respuesta fluida numero uno 1234567890", "Segunda pagina conserva todos los caracteres 9876543210"]
+        for index in 1...2 {
+            let identifier = "field-Respuesta \(index)"
+            let input = app.textViews[identifier].exists ? app.textViews[identifier] : app.textFields[identifier]
+            XCTAssertTrue(input.waitForExistence(timeout: 5)); input.tap()
+            let start = Date()
+            input.typeText(values[index - 1])
+            XCTAssertEqual(input.value as? String, values[index - 1])
+            print("Scanned page \(index): \(values[index - 1].count) characters, XCTest typing duration \(Date().timeIntervalSince(start)) seconds")
+            app.buttons["finishFormEditing"].tap()
+        }
+        screenshot("35-scanned-form-typing")
+        picker.buttons["Documento"].tap(); screenshot("36-scanned-filled-preview")
+        picker.buttons["Formulario"].tap()
+        app.buttons["closeDocument"].tap(); app.terminate()
+        app.launchArguments = ["-ui-testing-reopen"]; app.launch()
+        let saved = app.staticTexts["Escaneo multipágina"].firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 10)); saved.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.buttons["Formulario"].tap()
+        for index in 1...2 {
+            let identifier = "field-Respuesta \(index)"
+            let restored = app.textViews[identifier].exists ? app.textViews[identifier] : app.textFields[identifier]
+            XCTAssertEqual(restored.value as? String, values[index - 1])
+        }
+        screenshot("37-scanned-typing-restored")
+    }
+
     func testHomeUsesFullScreenAndSupportsDarkMode() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]

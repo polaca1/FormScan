@@ -74,3 +74,20 @@ installation and verify the text, checkbox and exported PDF. Preserve/export the
 only copy of important files before testing reinstalls. SMTP delivery is a separate
 owner configuration check. Supabase free-plan quotas and availability apply; the
 app does not promise unlimited space or permanent free-plan uptime.
+
+## Typing and stored PDFs (2.4.1)
+
+The document consists of its PDF plus authoritative editable field metadata.
+Ordinary text/checkbox edits atomically save the small metadata file without
+rewriting the scanned PDF. New/replaced PDFs and removed embedded widgets still
+persist the required PDF content. A fresh session, thumbnail, cloud installation
+and exported PDF apply the metadata, including older source PDF appearances.
+Cloud revisions always include both parts; downloading the PDF alone is not a
+substitute for restoring its field metadata.
+
+Keystrokes update only affected annotations. Unrelated pages and text annotation
+instances remain intact. PDFKit stays alive when switching modes but does not
+redraw while hidden; visible changed pages are refreshed on returning to Document.
+Regression tests check unchanged PDF bytes across repeated saves, removal of an
+embedded widget, restored values and flattened export. Simulator tests type in
+both pages of a rasterized scan, change modes and reopen the saved document.

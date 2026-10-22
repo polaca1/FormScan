@@ -65,7 +65,8 @@ struct AccountAccessView: View {
                                         .padding(16).accessibilityIdentifier("accountConfirmation").id(2)
                                 }
                             }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-                            if mode == .signUp { Text("Usa al menos 8 caracteres. Te enviaremos un correo para confirmar la cuenta.").font(.footnote).foregroundStyle(.secondary) }
+                            if mode == .signUp { Text("Usa al menos 8 caracteres y confirma tu correo. Si ya usas Google, entra con Google y añade una contraseña desde Ajustes.").font(.footnote).foregroundStyle(.secondary) }
+                            if mode == .signIn { Text("Google y contraseña comparten tu cuenta cuando usas el mismo correo verificado.").font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("accountLinkingExplanation") }
                             AccountMessages().id("accountFeedback")
                             Button(action: submit) {
                                 HStack {
@@ -152,20 +153,33 @@ struct AccountPasswordView: View {
     @EnvironmentObject private var account: AccountStore
     @State private var password = ""
     @State private var confirmation = ""
+    @FocusState private var focused: Int?
     var body: some View {
         Form {
             Section {
+                LabeledContent("Correo", value: account.user?.email ?? "")
                 SecureField("Nueva contraseña", text: $password).textContentType(.newPassword)
+                    .focused($focused, equals: 0).submitLabel(.next).onSubmit { focused = 1 }
+                    .accessibilityIdentifier("newAccountPassword")
                 SecureField("Repite la contraseña", text: $confirmation).textContentType(.newPassword)
-            } footer: { Text("Usa al menos 8 caracteres. Esta contraseña pertenece a tu cuenta de FormScan.") }
+                    .focused($focused, equals: 1).submitLabel(.done).onSubmit(save)
+                    .accessibilityIdentifier("confirmAccountPassword")
+            } footer: { Text("Usa al menos 8 caracteres. Si empezaste con Google, añade aquí una contraseña para entrar también con tu correo, conservando tus documentos.") }
             Section {
                 AccountMessages()
-                Button("Guardar contraseña") {
-                    Task { await account.updatePassword(password, confirmation: confirmation) }
-                }.disabled(account.busy)
+                Button(action: save) {
+                    HStack { if account.busy { ProgressView() }; Text("Guardar contraseña") }
+                }.disabled(account.busy).accessibilityIdentifier("saveAccountPassword")
             }
-        }.navigationTitle("Cambiar contraseña").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Crear o cambiar contraseña").navigationBarTitleDisplayMode(.inline)
             .onAppear { account.clearMessages() }
+    }
+    private func save() {
+        focused = nil
+        Task {
+            await account.updatePassword(password, confirmation: confirmation)
+            if account.error == nil { password = ""; confirmation = "" }
+        }
     }
 }
 
@@ -179,7 +193,7 @@ struct AccountSettingsView: View {
     @State private var showSignOut = false
     var body: some View {
         List {
-            Section("Cuenta") {
+            Section {
                 if let user = account.user {
                     Label(user.email, systemImage: "person.crop.circle")
                     NavigationLink("Crear o cambiar contraseña") { AccountPasswordView() }
@@ -188,6 +202,8 @@ struct AccountSettingsView: View {
                     Button { showAccess = true } label: { Label("Iniciar sesión", systemImage: "person.crop.circle") }
                     Text("Estás usando FormScan sin cuenta.").font(.subheadline).foregroundStyle(.secondary)
                 }
+            } header: { Text("Cuenta") } footer: {
+                if account.user != nil { Text("Con el mismo correo verificado, Google y contraseña dan acceso a tus mismos documentos.") }
             }
             Section {
                 Button(action: tutorial) { Label("Primeros pasos", systemImage: "book.closed") }
