@@ -34,6 +34,8 @@ final class TypingTests: XCTestCase {
         let id = try library.add(ExampleDocument.make(), title: "Escritura")
         let pdfURL = directory.appendingPathComponent("\(id).pdf")
         let original = try Data(contentsOf: pdfURL)
+        library.activeDocumentID = id
+        let thumbnail = try XCTUnwrap(library.thumbnail(for: library.documents[0]))
         let session = try XCTUnwrap(library.session(id: id))
         var text = try XCTUnwrap(session.item.fields.first(where: { !$0.checkbox }))
         for index in 1...20 {
@@ -41,6 +43,9 @@ final class TypingTests: XCTestCase {
             try session.persistNow()
             XCTAssertEqual(try Data(contentsOf: pdfURL), original, "A typing pause must not serialize the scanned PDF")
         }
+        XCTAssertTrue(library.thumbnail(for: library.documents[0]) === thumbnail, "The hidden library must not re-render on a typing pause")
+        library.activeDocumentID = nil
+        XCTAssertFalse(library.thumbnail(for: library.documents[0]) === thumbnail)
         var check = try XCTUnwrap(session.item.fields.first(where: \.checkbox))
         check.checked = true; session.update(check); try session.persistNow()
         let restored = try XCTUnwrap(DocumentLibrary(directory: directory).session(id: id))

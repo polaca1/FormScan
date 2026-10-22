@@ -42,7 +42,14 @@ final class DocumentLibrary: ObservableObject {
     let directory: URL
     @Published var error: String?
     var didChange: (() -> Void)?
-    var activeDocumentID: UUID?
+    var activeDocumentID: UUID? {
+        didSet {
+            if let previous = oldValue, previous != activeDocumentID {
+                thumbnails[previous] = nil
+                objectWillChange.send()
+            }
+        }
+    }
     private var sessions: [UUID: DocumentSession] = [:]
     private var thumbnails: [UUID: UIImage] = [:]
 
@@ -175,7 +182,10 @@ final class DocumentLibrary: ObservableObject {
         }
         try JSONEncoder().encode(item).write(to: metadataURL(item.id), options: .atomic)
         documents.removeAll { $0.id == item.id }; documents.insert(item, at: 0)
-        thumbnails[item.id] = nil
+        // The library is underneath the full-screen editor. Do not rasterize
+        // its thumbnail again on every metadata save while someone is typing.
+        // Closing the editor invalidates it once and shows the latest answers.
+        if activeDocumentID != item.id { thumbnails[item.id] = nil }
         if changed { didChange?() }
     }
 }
