@@ -3,7 +3,7 @@
   "identifier": "com.polaca1.formscan.source.v2",
   "subtitle": "Tus formularios, resueltos.",
   "description": "Escáner y formularios con IA local. Diseñado para iOS 26 y 27.",
-  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/AppIcon.png",
+  "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.1/AppIcon.png",
   "apps": [
     {
       "name": "FormScan",
@@ -11,24 +11,24 @@
       "developerName": "FormScan",
       "subtitle": "Escanea. Completa. Comparte.",
       "localizedDescription": "Escanea documentos, importa PDF o imágenes y detecta campos con IA local. Lo que escribes en el formulario aparece inmediatamente en el documento. Guarda, revisa y exporta un PDF listo para compartir.",
-      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/AppIcon.png",
+      "iconURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.1/AppIcon.png",
       "tintColor": "007AFF",
       "versions": [
         {
-          "version": "2.4.0",
-          "buildVersion": "31",
-          "date": "2026-10-21T23:46:56Z",
-          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/FormScan-2.4.0.ipa",
-          "size": 44420401,
+          "version": "2.4.1",
+          "buildVersion": "32",
+          "date": "2026-10-22T13:50:08Z",
+          "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.1/FormScan-2.4.1.ipa",
+          "size": 44444026,
           "minOSVersion": "26.0",
-          "localizedDescription": "Acceso con Google o correo y guardado privado de documentos en tu cuenta. Recuperación automática, edición sin conexión y protección de cambios entre dispositivos. Casillas corregidas, análisis local y exportación PDF para iOS 26 y 27."
+          "localizedDescription": "Escritura fluida en formularios y PDF multipágina sin redibujar el documento oculto ni reescribirlo con cada pausa. Google y contraseña comparten la misma cuenta con el correo verificado. Se conservan el guardado privado, las casillas y la exportación PDF."
         }
       ],
-      "version": "2.4.0",
-      "versionDate": "2026-10-21T23:46:56Z",
-      "versionDescription": "Acceso con Google o correo y guardado privado de documentos en tu cuenta. Recuperación automática, edición sin conexión y protección de cambios entre dispositivos. Casillas corregidas, análisis local y exportación PDF para iOS 26 y 27.",
-      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.0/FormScan-2.4.0.ipa",
-      "size": 44420401,
+      "version": "2.4.1",
+      "versionDate": "2026-10-22T13:50:08Z",
+      "versionDescription": "Escritura fluida en formularios y PDF multipágina sin redibujar el documento oculto ni reescribirlo con cada pausa. Google y contraseña comparten la misma cuenta con el correo verificado. Se conservan el guardado privado, las casillas y la exportación PDF.",
+      "downloadURL": "https://github.com/polaca1/FormScan/releases/download/v2.4.1/FormScan-2.4.1.ipa",
+      "size": 44444026,
       "minOSVersion": "26.0",
       "appPermissions": {
         "entitlements": [],
