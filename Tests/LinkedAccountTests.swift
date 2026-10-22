@@ -72,6 +72,7 @@ private actor LinkedAccountService {
     }
     func testGoogleThenAddPasswordThenFreshPasswordLoginPreservesDocumentsAndUUID() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let service = LinkedAccountService(), google = account(service), workspace = DocumentWorkspace(root: root)
         await google.signInWithGoogle(); XCTAssertNil(google.error)
@@ -89,6 +90,7 @@ private actor LinkedAccountService {
     }
     func testConfirmedEmailThenGoogleThenPasswordKeepsAccountAndDocuments() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let service = LinkedAccountService(), email = account(service), workspace = DocumentWorkspace(root: root)
         await email.signUp(email: "same@example.com", password: "fixture-password", confirmation: "fixture-password")
