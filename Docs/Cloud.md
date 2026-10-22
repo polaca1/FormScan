@@ -88,6 +88,8 @@ substitute for restoring its field metadata.
 Keystrokes update only affected annotations. Unrelated pages and text annotation
 instances remain intact. PDFKit stays alive when switching modes but does not
 redraw while hidden; visible changed pages are refreshed on returning to Document.
+The hidden library retains its thumbnail during edits and refreshes it on closing
+the full-screen editor, rather than rasterizing a scanned page on every save.
 Regression tests check unchanged PDF bytes across repeated saves, removal of an
 embedded widget, restored values and flattened export. Simulator tests type in
 both pages of a rasterized scan, change modes and reopen the saved document.

@@ -66,8 +66,7 @@ Stateful transport tests cover both orders through the real SDK, fresh local aut
 storage, the same owner UUID and an edited document. They test the client contract,
 not a Google login against the production account.
 
- Sign-out clears the
-local session even if remote revocation cannot connect; it does not delete files.
+Sign-out clears the local session even if remote revocation cannot connect; it does not delete files.
 The SDK refreshes sessions. A previously authenticated local session allows offline
 access to its local documents; server actions still require a valid session.
 
